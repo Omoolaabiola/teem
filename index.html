@@ -1,0 +1,3021 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover" id="teem-viewport-meta">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="TEEM Portal">
+  <meta name="theme-color" content="#1B5E20">
+  <script>
+    // Runs BEFORE the first paint. The sign-in form is part of the page markup,
+    // so on a reload it used to appear for a moment and then vanish once the
+    // app booted and found a live session. Deciding here, from storage alone,
+    // means the correct screen is painted first time - no flash.
+    (function () {
+      try {
+        var marker = localStorage.getItem('TEEM_SESSION_USER_V1');
+        var state = localStorage.getItem('TEEM_STATE');
+        var signedIn = false;
+        if (marker) {
+          signedIn = true;
+        } else if (state) {
+          var parsed = JSON.parse(state);
+          signedIn = !!(parsed && parsed.sessionUserId);
+        }
+        document.documentElement.setAttribute('data-teem-session', signedIn ? 'in' : 'out');
+      } catch (e) {
+        document.documentElement.setAttribute('data-teem-session', 'out');
+      }
+    })();
+  </script>
+  <script>
+    (function () {
+      try {
+        var ua = (navigator && navigator.userAgent) || '';
+        var touchPts = (navigator && navigator.maxTouchPoints) || 0;
+        var minScreen = (window.screen && Math.min(window.screen.width || 9999, window.screen.height || 9999)) || 9999;
+        var coarse = window.matchMedia && window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+        var isMob = /iPhone|iPod|iPad|Android|Mobile|CriOS|FxiOS/i.test(ua) ||
+          (touchPts > 0 && minScreen <= 900) ||
+          coarse ||
+          (window.innerWidth && window.innerWidth <= 900);
+        if (isMob) {
+          document.documentElement.classList.add('is-mobile-device');
+          var vp = document.getElementById('teem-viewport-meta');
+          if (vp) vp.setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=5.0, viewport-fit=cover');
+        }
+      } catch (e) {}
+    })();
+  </script>
+  <title>TEEM Waste Management System v1 - PSP Concession Portal</title>
+  <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="assets/teem_logo_standalone.png" type="image/png">
+  <link rel="apple-touch-icon" href="assets/icon-192.png">
+  <link rel="manifest" href="manifest.json">
+</head>
+<body>
+  <div class="sidebar-backdrop" id="sidebar-backdrop" onclick="closeMobileNav()"></div>
+  <div class="app-layout">
+    <!-- ============================ SIDEBAR ============================ -->
+    <aside class="sidebar" id="app-sidebar">
+      <div class="sidebar-brand">
+        <img src="assets/teem_logo_standalone.png" alt="Teem Business Nigeria Enterprises" class="brand-logo-hero">
+        <button class="sidebar-collapse-btn" onclick="toggleSidebar()" title="Collapse / expand the task panel" aria-label="Collapse sidebar">
+          <span class="collapse-icon">&#9776;</span>
+        </button>
+        <button type="button" class="mobile-sidebar-close-btn" id="mobile-sidebar-close-btn" onclick="closeMobileNav()" title="Close navigation menu" aria-label="Close navigation menu">&#10005;</button>
+      </div>
+
+      <nav class="sidebar-nav">
+        <div class="nav-section-label nav-section-title">
+          WASTE CONCESSION PORTAL <sub class="app-version" id="app-version-label">v16</sub>
+        </div>
+        <a class="nav-item active" href="#overview" onclick="switchView('overview')">
+          <span class="nav-icon">&#128202;</span>
+          <span class="nav-text">Dashboard Overview</span>
+        </a>
+
+        <div class="nav-dropdown open" id="nav-drop-facilities">
+          <div class="nav-dropdown-toggle" onclick="toggleDropdown('nav-drop-facilities')">
+            <span class="nav-icon">&#127970;</span>
+            <span class="nav-text">Facilities Directory</span>
+            <span class="nav-chevron">&#9660;</span>
+          </div>
+          <div class="nav-dropdown-menu">
+            <a class="nav-sub-item active" href="javascript:void(0)" onclick="filterFacilityCategory('all')">
+              <span>All Master Facilities</span><span class="sub-badge" id="sub-count-all">0</span>
+            </a>
+            <a class="nav-sub-item" href="javascript:void(0)" onclick="filterFacilityCategory('Commercial')">
+              <span>Commercial Outlets</span>
+            </a>
+            <a class="nav-sub-item" href="javascript:void(0)" onclick="filterFacilityCategory('Industrial')">
+              <span>Industrial Plants</span>
+            </a>
+            <a class="nav-sub-item" href="javascript:void(0)" onclick="filterFacilityCategory('Medical')">
+              <span>Medical Facilities</span>
+            </a>
+            <a class="nav-sub-item" href="javascript:void(0)" onclick="filterFacilityCategory('Institutional')">
+              <span>Institutional Clients</span>
+            </a>
+          </div>
+        </div>
+
+        <div class="nav-dropdown open" id="nav-drop-specialized">
+          <div class="nav-dropdown-toggle" onclick="toggleDropdown('nav-drop-specialized')">
+            <span class="nav-icon">&#128668;</span>
+            <span class="nav-text">Specialized Waste</span>
+            <span class="nav-chevron">&#9660;</span>
+          </div>
+          <div class="nav-dropdown-menu">
+            <a class="nav-sub-item" href="javascript:void(0)" onclick="filterFacilityCategory('Agricultural Waste')">
+              <span>Agricultural Waste</span><span class="sub-badge" id="sub-count-agro">0</span>
+            </a>
+            <a class="nav-sub-item" href="javascript:void(0)" onclick="filterFacilityCategory('Construction Waste')">
+              <span>Construction Waste</span><span class="sub-badge" id="sub-count-constr">0</span>
+            </a>
+          </div>
+        </div>
+
+        <a class="nav-item" href="#municipal" onclick="switchView('municipal')">
+          <span class="nav-icon">&#127968;</span>
+          <span class="nav-text">Municipal Streets</span>
+          <span class="nav-badge">Residential</span>
+        </a>
+
+        <a class="nav-item" href="#evacuations" onclick="switchView('evacuations')">
+          <span class="nav-icon">&#128667;</span>
+          <span class="nav-text">Evacuation Tracker</span>
+          <span class="nav-badge nav-badge-alert" id="nav-tracker-badge" style="display:none;">0</span>
+        </a>
+
+        <div class="nav-section-label">Management &amp; Formal Letters</div>
+
+        <a class="nav-item" href="#requests" onclick="switchView('requests')">
+          <span class="nav-icon">&#128209;</span>
+          <span class="nav-text">Formal Requests &amp; Letters</span>
+          <span class="nav-badge nav-badge-live">Official</span>
+        </a>
+
+        <a class="nav-item" href="#account-statement" onclick="switchView('account-statement')">
+          <span class="nav-icon">&#127974;</span>
+          <span class="nav-text">Account Statement</span>
+          <span class="nav-badge nav-badge-live">Bank</span>
+        </a>
+
+        <a class="nav-item" href="#debtors" onclick="switchView('debtors')">
+          <span class="nav-icon">&#128176;</span>
+          <span class="nav-text">Outstanding Radar</span>
+          <span class="nav-badge nav-badge-warning" id="nav-debtor-badge" style="display:none;">0</span>
+        </a>
+
+        <a class="nav-item" href="#monthly-report" onclick="switchView('monthly-report')">
+          <span class="nav-icon">&#128202;</span>
+          <span class="nav-text">Monthly Report</span>
+          <span class="nav-badge nav-badge-live" id="nav-monthly-report-badge">I&amp;E</span>
+        </a>
+
+        <a class="nav-item" href="#archive" onclick="switchView('archive')">
+          <span class="nav-icon">&#128451;&#65039;</span>
+          <span class="nav-text">Document Archive</span>
+          <span class="nav-badge nav-badge-live">Finalised</span>
+        </a>
+
+        <a class="nav-item" href="#supervisors" onclick="switchView('supervisors')">
+          <span class="nav-icon">&#128119;</span>
+          <span class="nav-text">Field Supervisors</span>
+          <span class="nav-badge" id="nav-supervisor-badge" style="display:none;"></span>
+        </a>
+
+        <a class="nav-item" href="#chat" onclick="switchView('chat')">
+          <span class="nav-icon">&#128172;</span>
+          <span class="nav-text">Operations Live Chat</span>
+          <span class="nav-badge nav-badge-live">Live</span>
+        </a>
+
+        <div class="nav-section-label">System Control</div>
+
+        <a class="nav-item" href="#settings" onclick="switchView('settings')">
+          <span class="nav-icon">&#9881;&#65039;</span>
+          <span class="nav-text">Settings &amp; Admin Control</span>
+          <span class="nav-badge nav-badge-alert">Restricted</span>
+        </a>
+      </nav>
+
+      <div class="sidebar-footer" onclick="openProfileModal()" title="Open my profile">
+        <div class="user-avatar user-avatar-photo" id="sidebar-user-photo">MA</div>
+        <div class="user-info">
+          <span class="user-name" id="sidebar-user-name">Not signed in</span>
+          <span class="user-role" id="sidebar-user-role">Sign in to continue</span>
+        </div>
+        <span class="user-caret">&#9662;</span>
+      </div>
+    </aside>
+
+    <!-- ============================ MAIN ============================ -->
+    <main class="main-wrapper">
+      <header class="topbar">
+        <div class="topbar-nav-controls">
+          <button type="button" class="topbar-nav-btn mobile-menu-btn" id="mobile-menu-btn" onclick="toggleMobileNav()" title="Open Navigation Menu" aria-label="Open Navigation Menu">&#9776; Menu</button>
+          <button class="topbar-nav-btn" onclick="goHome()" title="Dashboard Overview">&#127968; Home</button>
+          <button class="topbar-nav-btn" onclick="goBack()" title="Previous View">&#11013;&#65039; Back</button>
+          <button class="topbar-nav-btn" onclick="refreshCurrentView()" title="Refresh live data">&#128260; Refresh</button>
+        </div>
+
+        <div class="topbar-search">
+          <span class="search-icon">&#128269;</span>
+          <input type="text" id="facility-search-input" class="search-input" placeholder="Quick search any facility, street, supervisor or payer...">
+        </div>
+
+        <div class="topbar-actions">
+          <button id="user-chip-btn" class="user-chip" onclick="openProfileModal()" title="My profile">
+            <span class="user-chip-photo" id="topbar-user-photo">MA</span>
+            <span class="user-chip-text">
+              <span class="user-chip-name" id="topbar-user-name">Not signed in</span>
+              <span class="user-chip-role" id="topbar-user-role">-</span>
+            </span>
+          </button>
+          <button class="user-chip user-chip-ghost" onclick="signOut()" title="Sign out / switch user">
+            <span class="user-chip-text"><span class="user-chip-name">Sign out</span></span>
+          </button>
+        </div>
+      </header>
+
+      <!-- ==================== VIEW 1: DASHBOARD ==================== -->
+      <section class="view-panel active" id="view-overview">
+        <div class="view-header">
+          <div>
+            <h1 class="view-title">OPERATIONS CONTROL DESK</h1>
+            <p class="view-subtitle" id="overview-live-date-subtitle">Abeokuta PSP Concession Operations &bull; Monday, 19 October 2026</p>
+          </div>
+          <div class="action-btn-group">
+            <button class="btn btn-primary admin-only" onclick="openAddFacilityModal()">+ Add New Facility</button>
+            <button class="btn btn-secondary admin-only" onclick="openAddStreetModal()">+ Add Municipal Street</button>
+            <button class="btn btn-outline" onclick="switchView('settings')">&#9881;&#65039; Fleet &amp; Admin Settings</button>
+          </div>
+        </div>
+
+        <!-- SLIDE SHOWCASE -->
+        <div class="dash-showcase">
+          <div class="dash-slides" id="dash-slide-track">
+            <!-- Populated by JS -->
+          </div>
+          <button class="dash-nav dash-nav-prev" onclick="nextSlide(-1)" aria-label="Previous slide">&#8249;</button>
+          <button class="dash-nav dash-nav-next" onclick="nextSlide(1)" aria-label="Next slide">&#8250;</button>
+          <div class="dash-dots" id="dash-slide-dots"></div>
+        </div>
+
+        <!-- CLICKABLE OPERATIONS CARDS -->
+        <div class="dash-card-grid">
+          <button class="dash-card dash-card-green" onclick="filterFacilityCategory('all')">
+            <span class="dash-card-icon">&#127970;</span>
+            <span class="dash-card-label">Active Facilities</span>
+            <span class="dash-card-value" id="dash-count-all">0 Clients</span>
+            <span class="dash-card-foot">Master directory &rarr;</span>
+          </button>
+          <button class="dash-card dash-card-green" onclick="switchView('municipal')">
+            <span class="dash-card-icon">&#127968;</span>
+            <span class="dash-card-label">Municipal Streets</span>
+            <span class="dash-card-value" id="dash-count-streets">0 Streets</span>
+            <span class="dash-card-foot">Residential zones &rarr;</span>
+          </button>
+          <button class="dash-card dash-card-orange" onclick="filterFacilityCategory('Commercial')">
+            <span class="dash-card-icon">&#127978;</span>
+            <span class="dash-card-label">Commercial Outlets</span>
+            <span class="dash-card-value" id="dash-count-commercial">0 Outlets</span>
+            <span class="dash-card-foot">View directory &rarr;</span>
+          </button>
+          <button class="dash-card dash-card-orange" onclick="filterFacilityCategory('Industrial')">
+            <span class="dash-card-icon">&#127981;</span>
+            <span class="dash-card-label">Industrial Plants</span>
+            <span class="dash-card-value" id="dash-count-industrial">0 Plants</span>
+            <span class="dash-card-foot">60% rebate account &rarr;</span>
+          </button>
+          <button class="dash-card dash-card-blue" onclick="filterFacilityCategory('Institutional')">
+            <span class="dash-card-icon">&#127979;</span>
+            <span class="dash-card-label">Institutional Clients</span>
+            <span class="dash-card-value" id="dash-count-institutional">0 Clients</span>
+            <span class="dash-card-foot">Schools &amp; churches &rarr;</span>
+          </button>
+          <button class="dash-card dash-card-blue" onclick="filterFacilityCategory('Medical')">
+            <span class="dash-card-icon">&#127973;</span>
+            <span class="dash-card-label">Medical Facilities</span>
+            <span class="dash-card-value" id="dash-count-medical">0 Facilities</span>
+            <span class="dash-card-foot">Hospitals &amp; clinics &rarr;</span>
+          </button>
+          <button class="dash-card dash-card-red" onclick="switchView('evacuations')">
+            <span class="dash-card-icon">&#128680;</span>
+            <span class="dash-card-label">Evacuation Notices</span>
+            <span class="dash-card-value" id="dash-count-notices">0 Notices</span>
+            <span class="dash-card-foot">Inspect tracker &rarr;</span>
+          </button>
+          <button class="dash-card dash-card-red" onclick="switchView('debtors')">
+            <span class="dash-card-icon">&#128179;</span>
+            <span class="dash-card-label">Outstanding Accounts</span>
+            <span class="dash-card-value" id="dash-count-outstanding">0 Clients</span>
+            <span class="dash-card-foot">Open radar &rarr;</span>
+          </button>
+        </div>
+
+        <div class="data-card gps-card" id="gps-section-card">
+          <div class="gps-head">
+            <div>
+              <h3 class="card-title" id="gps-card-main-title">&#128506;&#65039; GPS CONCESSION MAP &amp; LIVE FIELD POSITION</h3>
+              <p class="gps-sub" id="gps-status-line" style="display:none;"></p>
+            </div>
+            <div class="action-btn-group" style="flex-wrap:wrap;">
+              <span id="gps-layer-controls" style="display:inline-flex;gap:6px;flex-wrap:wrap;">
+                <button class="btn btn-sm btn-outline" onclick="toggleGpsLayer('facilities')">Facilities</button>
+                <button class="btn btn-sm btn-outline" onclick="toggleGpsLayer('streets')">Streets</button>
+                <button class="btn btn-sm btn-outline" onclick="openModal('modal-map-help')">&#10067; Map Guide</button>
+                <button class="btn btn-sm btn-primary" onclick="locateMe()">&#128205; Locate Me</button>
+              </span>
+              <button class="btn btn-sm btn-outline gps-disable-toggle-btn" id="gps-toggle-map-btn" onclick="toggleGpsMapDisabled()" title="Collapse or disable the GPS map">
+                &#128315; Collapse / Disable GPS Map
+              </button>
+            </div>
+          </div>
+
+          <div id="gps-active-section">
+            <div class="gps-map-wrap" id="gps-map-wrap">
+              <div class="gps-locate-bar" id="gps-locate-bar" style="display:none;">
+                <span class="gps-locate-icon">&#127919;</span>
+                <span id="gps-locate-text">Locating</span>
+                <button type="button" class="gps-locate-clear" onclick="clearCrewFocus()" title="Stop locating">&times;</button>
+              </div>
+              <div id="gps-map" class="gps-map gps-map-wide"><!-- SVG map rendered by JS --></div>
+              <div class="gps-nav">
+                <button type="button" class="gps-nav-btn" onclick="gpsZoomBy(1.6)" title="Zoom in">&#43;</button>
+                <button type="button" class="gps-nav-btn" onclick="gpsZoomBy(1/1.6)" title="Zoom out">&#8722;</button>
+                <button type="button" class="gps-nav-btn" onclick="gpsPanBy(-12, 0)" title="Pan left">&#8592;</button>
+                <button type="button" class="gps-nav-btn" onclick="gpsPanBy(12, 0)" title="Pan right">&#8594;</button>
+                <button type="button" class="gps-nav-btn" onclick="gpsPanBy(0, -10)" title="Pan up">&#8593;</button>
+                <button type="button" class="gps-nav-btn" onclick="gpsPanBy(0, 10)" title="Pan down">&#8595;</button>
+                <button type="button" class="gps-nav-btn gps-nav-reset" onclick="gpsResetView()" title="Fit the whole concession">&#8634;</button>
+                <span class="gps-nav-zoom" id="gps-zoom-label">1.0&times;</span>
+              </div>
+              <div class="gps-legend">
+                <span><i class="gps-dot gps-dot-green"></i> Optimal</span>
+                <span><i class="gps-dot gps-dot-amber"></i> Due soon</span>
+                <span><i class="gps-dot gps-dot-red gps-dot-blink"></i> Overdue</span>
+                <span><i class="gps-dot gps-dot-street"></i> Street</span>
+                <span><i class="gps-dot gps-dot-me"></i> My GPS</span>
+                <span><i class="gps-dot gps-dot-crew"></i> Field Crew</span>
+              </div>
+            </div>
+
+            <div class="gps-panels">
+              <div class="gps-panel gps-panel-tracking">
+                <div class="gps-panel-head">
+                  <h4 class="gps-side-title">&#128652; Live Field Tracking - Vehicles &amp; Supervisors</h4>
+                </div>
+                <div id="field-tracking-list" class="field-tracking-list">
+                  <div class="gps-empty">No field positions recorded yet.</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- COMPANY OVERVIEW (SHOWN WHEN GPS MAP IS COLLAPSED, HIDDEN WHEN GPS MAP IS SHOWN) -->
+        <div class="company-overview" id="company-overview-card" style="display:none;">
+          <div class="company-overview-head">
+            <img src="assets/teem_logo_standalone.png" alt="Teem Business Nigeria Enterprises" class="company-logo">
+            <div>
+              <h3>TEEM BUSINESS NIGERIA ENTERPRISES</h3>
+              <span class="company-reg">Registered Contractor RC OG20434 &bull; Private Sector Participation (PSP) Concessionaire</span>
+              <span class="company-contact" id="company-contact-line">Address: Praise Tower, opp. Dimmo Stores, Omida, Ibara, Abeokuta, Ogun State. Tel: 07034962112, 07048269980 | Email: teembusnigent@gmail.com</span>
+            </div>
+          </div>
+          <p class="company-lead">
+            <strong>Teem Business Nigeria Enterprises (RC OG20434)</strong> is an accredited private sector waste management operator and an environmental consulting firm that has been operating for almost two decades, licensed to provide house-to-house and commercial waste collection, haulage, evacuation, disposal, and professional environmental consultancy services within the Ogun State Waste Management Authority (OGWAMA) concession area. The company serves commercial outlets, industrial plants, medical facilities, institutional clients, agricultural and construction waste generators, together with municipal residential streets. Through our Registered Fleet &amp; Logistics of compactors, open haulage trucks, and PSP support vehicles dispatched on verifiable routes, we deliver Verified Evacuations where every route is logged with the date, vehicle used, and the supervisor in charge. Guided by Environmental Responsibility, recoverable materials are sorted and diverted back into the circular economy, while Transparent Revenue administration ensures all payments are reconciled into the authorised OGWAMA Sterling Bank Account 0079828285.
+          </p>
+        </div>
+      </section>
+
+      <!-- ==================== VIEW 2: FACILITIES ==================== -->
+      <section class="view-panel" id="view-facilities">
+        <div class="view-header">
+          <div>
+            <h1 class="view-title" id="facilities-view-title">MASTER FACILITIES DIRECTORY</h1>
+            <p class="view-subtitle" id="facilities-view-subtitle">Official registered clients</p>
+          </div>
+          <div class="action-btn-group">
+            <button class="btn btn-primary admin-only" onclick="openAddFacilityModal()">+ Add New Facility</button>
+            <button class="btn btn-outline" onclick="switchView('requests')">&#128209; Prepare Service Request</button>
+          </div>
+        </div>
+
+        <div class="data-card">
+          <div class="card-header-bar">
+            <div class="filter-tabs" id="fac-filter-tabs">
+              <button class="filter-tab active" data-category="all" id="fac-tab-all" onclick="filterFacilityCategory('all')">All</button>
+              <button class="filter-tab" data-category="Commercial" id="fac-tab-comm" onclick="filterFacilityCategory('Commercial')">Commercial</button>
+              <button class="filter-tab" data-category="Industrial" id="fac-tab-ind" onclick="filterFacilityCategory('Industrial')">Industrial</button>
+              <button class="filter-tab" data-category="Medical" id="fac-tab-med" onclick="filterFacilityCategory('Medical')">Medical</button>
+              <button class="filter-tab" data-category="Institutional" id="fac-tab-inst" onclick="filterFacilityCategory('Institutional')">Institutional</button>
+              <button class="filter-tab" data-category="Agricultural Waste" id="fac-tab-agro" onclick="filterFacilityCategory('Agricultural Waste')">Agricultural</button>
+              <button class="filter-tab" data-category="Construction Waste" id="fac-tab-constr" onclick="filterFacilityCategory('Construction Waste')">Construction</button>
+              <button class="filter-tab" data-category="debtors" id="fac-tab-debtors" onclick="filterFacilityCategory('debtors')" style="color:var(--danger-red);background:#FEE2E2;">Outstanding</button>
+            </div>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <input type="text" id="fac-local-search" class="form-input" style="padding:6px 12px;font-size:12.5px;width:220px;" placeholder="Filter current list...">
+              <span id="facilities-match-count" class="badge badge-category">0 entries</span>
+            </div>
+          </div>
+
+          <div class="data-table-container">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>FACILITY</th>
+                  <th>SECTOR</th>
+                  <th>MONTHLY BILL</th>
+                  <th>EVACUATION SCHEDULE</th>
+                  <th>LATEST PAYMENT &amp; DEPOSITOR DETAILS</th>
+                  <th>ACTIONS</th>
+                </tr>
+              </thead>
+              <tbody id="facilities-list-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== VIEW 3: MUNICIPAL ==================== -->
+      <section class="view-panel" id="view-municipal">
+        <div class="view-header">
+          <div>
+            <h1 class="view-title">MUNICIPAL STREETS DIRECTORY</h1>
+          </div>
+          <div class="action-btn-group">
+            <button class="btn btn-primary admin-only" onclick="openAddStreetModal()">+ Add Municipal Street</button>
+          </div>
+        </div>
+
+        <div class="data-card">
+          <div class="card-header-bar">
+            <span class="card-title">Registered Municipal Streets</span>
+            <div style="display:flex;align-items:center;gap:10px;">
+              <input type="text" id="municipal-search-input" class="form-input" style="padding:6px 12px;font-size:12.5px;width:240px;" placeholder="Search street or supervisor...">
+              <span id="mun-street-count" class="badge badge-category">0 Streets</span>
+            </div>
+          </div>
+          <div class="data-table-container">
+            <table class="data-table">
+              <thead>
+                <tr>
+                  <th>STREET</th>
+                  <th>FIELD SUPERVISOR</th>
+                  <th>DATE OF LAST EVACUATION</th>
+                  <th>SCHEDULE STATUS</th>
+                  <th>ACTIONS</th>
+                </tr>
+              </thead>
+              <tbody id="municipal-list-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== VIEW 4: EVACUATION TRACKER ==================== -->
+      <section class="view-panel" id="view-evacuations">
+        <div class="view-header">
+          <div>
+            <h1 class="view-title">EVACUATION TRACKER &amp; COMPLIANCE AUDIT</h1>
+          </div>
+          <div class="action-btn-group">
+            <button class="btn btn-outline" onclick="openPreviewForAudit()">&#128269; Preview</button>
+            <button class="btn btn-outline desktop-print-only" onclick="printComplianceAudit()">&#128424; Print</button>
+            <button class="btn btn-primary" onclick="exportComplianceAudit()">&#128190; Save</button>
+          </div>
+        </div>
+
+        <div class="data-card" style="padding:20px;">
+          <div class="card-header-bar" style="padding:0 0 16px 0;border:none;">
+            <div>
+              <span class="card-title">&#128202; WEEKLY &amp; MONTHLY EVACUATION COMPLIANCE EXTRACTION</span>
+              <p style="font-size:12.5px;color:var(--text-muted);margin-top:2px;">Active period: <strong id="audit-active-period">Month of October 2026</strong></p>
+            </div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;">
+              <select id="audit-period-select" class="form-select" style="width:230px;" onchange="renderComplianceAudit()">
+                <option value="week_current">This Week (Current Week)</option>
+                <option value="week_last">Last Week (Previous 7 Days)</option>
+                <option value="month_10" selected>Month of October 2026</option>
+                <option value="month_09">Month of September 2026</option>
+                <option value="month_08">Month of August 2026</option>
+                <option value="month_07">Month of July 2026</option>
+              </select>
+              <select id="audit-sector-select" class="form-select" style="width:210px;" onchange="renderComplianceAudit()">
+                <option value="all">All Facilities &amp; Streets</option>
+                <option value="facilities">Facilities Only</option>
+                <option value="municipal">Municipal Streets Only</option>
+                <option value="Commercial">Commercial</option>
+                <option value="Industrial">Industrial</option>
+                <option value="Medical">Medical</option>
+                <option value="Institutional">Institutional</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="audit-card-grid">
+            <button class="audit-card" id="audit-card-rate" onclick="setAuditVisibility('all')">
+              <span class="audit-card-label">OVERALL COMPLIANCE RATE</span>
+              <span class="audit-card-value green" id="audit-compliance-rate">0%</span>
+              <span class="audit-card-foot">Target: 100% statutory clearance</span>
+            </button>
+            <button class="audit-card" id="audit-card-evacuated" onclick="setAuditVisibility('evacuated')">
+              <span class="audit-card-label">UNITS EVACUATED IN PERIOD</span>
+              <span class="audit-card-value green" id="audit-count-evacuated">0 Units</span>
+              <span class="audit-card-foot">Click to view this list only</span>
+            </button>
+            <button class="audit-card" id="audit-card-not" onclick="setAuditVisibility('not-evacuated')">
+              <span class="audit-card-label">UNITS NOT EVACUATED</span>
+              <span class="audit-card-value red" id="audit-count-not">0 Units</span>
+              <span class="audit-card-foot">Click to view this list only</span>
+            </button>
+          </div>
+
+          <div id="audit-section-evacuated">
+            <h4 class="report-section-title" style="margin-bottom:8px;">&#9989; EVACUATED FACILITIES &amp; STREETS (AUDIT PASS)</h4>
+            <div class="data-table-container" style="border:1px solid var(--border-subtle);border-radius:12px;max-height:320px;overflow-y:auto;">
+              <table class="data-table">
+                <thead><tr><th>NAME</th><th>SECTOR</th><th>EVACUATION DATE</th><th>VEHICLE USED</th><th>SUPERVISOR LEAD</th><th>STATUS</th></tr></thead>
+                <tbody id="audit-evacuated-table-body"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div id="audit-section-not" style="margin-top:22px;">
+            <h4 class="report-section-title" style="margin-bottom:8px;color:var(--danger-red);">&#10060; NOT EVACUATED IN SELECTED PERIOD (ACTION REQUIRED)</h4>
+            <div class="data-table-container" style="border:1px solid var(--border-subtle);border-radius:12px;max-height:320px;overflow-y:auto;">
+              <table class="data-table">
+                <thead><tr><th>NAME</th><th>SECTOR</th><th>LAST RECORDED EVACUATION</th><th>OVERDUE STATUS</th><th>ASSIGNED SUPERVISOR</th><th>ACTION</th></tr></thead>
+                <tbody id="audit-not-evacuated-table-body"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div class="data-card">
+          <div class="card-header-bar"><span class="card-title">&#9888;&#65039; OVERDUE DISPATCH QUEUE</span></div>
+          <div class="data-table-container">
+            <table class="data-table">
+              <thead><tr><th>NAME</th><th>SECTOR</th><th>SUPERVISOR</th><th>LAST EVACUATION</th><th>STATUS</th><th>ACTION</th></tr></thead>
+              <tbody id="tracker-schedule-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="data-card">
+          <div class="card-header-bar"><span class="card-title">&#128203; HISTORICAL EVACUATION LOG</span></div>
+          <div class="data-table-container" style="max-height:380px;overflow-y:auto;">
+            <table class="data-table">
+              <thead><tr><th>DATE</th><th>TARGET</th><th>VEHICLE USED</th><th>SUPERVISOR</th><th>STATUS</th><th style="text-align:center;">ACTION</th></tr></thead>
+              <tbody id="evacuation-logs-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== VIEW 5: FORMAL REQUESTS ==================== -->
+      <section class="view-panel" id="view-requests">
+        <div class="view-header">
+          <div>
+            <h1 class="view-title">FORMAL REQUESTS &amp; SERVICE LETTERS</h1>
+          </div>
+        </div>
+
+        <div class="data-card" style="padding:12px 16px;">
+          <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+            <h3 style="font-size:13.5px;font-weight:800;">1. Select Client Sector</h3>
+            <div class="filter-tabs">
+              <button class="filter-tab active" id="req-cat-commercial" onclick="setRequestCategory('Commercial')">Commercial</button>
+              <button class="filter-tab" id="req-cat-industrial" onclick="setRequestCategory('Industrial')">Industrial (60% Rebate)</button>
+              <button class="filter-tab" id="req-cat-medical" onclick="setRequestCategory('Medical')">Medical</button>
+              <button class="filter-tab" id="req-cat-agricultural" onclick="setRequestCategory('Agricultural Waste')">Agricultural</button>
+              <button class="filter-tab" id="req-cat-construction" onclick="setRequestCategory('Construction Waste')">Construction</button>
+              <button class="filter-tab" id="req-cat-municipal" onclick="setRequestCategory('Municipal')">Municipal</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="requests-layout">
+          <div class="data-card" style="padding:16px;display:flex;flex-direction:column;gap:10px;">
+            <h3 style="font-size:14px;font-weight:800;color:var(--primary);">2. Payment Schedule Manager</h3>
+            <p style="display:none;" id="req-rows-hint"></p>
+
+            <div id="req-items-checklist" class="req-list"></div>
+
+            <button class="btn btn-outline admin-only" onclick="openAddSchedulePaymentModal()">+ Add Payment Entry</button>
+
+            <div class="req-totals">
+              <div><span>Selected Total</span><strong id="req-running-total">&#8358;0</strong></div>
+              <div><span>Rebate Payable</span><strong id="req-running-rebate">&#8358;0</strong></div>
+            </div>
+
+            <div class="req-action-row" style="display:flex;gap:8px;flex-wrap:nowrap;">
+              <button class="btn btn-outline" style="flex:1;" onclick="openPreviewForRequest()">&#128269; Preview</button>
+              <button class="btn btn-outline desktop-print-only" style="flex:1;" onclick="printRequestLetter()">&#128424; Print</button>
+              <button class="btn btn-secondary" style="flex:1;" onclick="exportRequestLetter()">&#128190; Save</button>
+            </div>
+          </div>
+
+          <div class="req-preview-col">
+            <div class="req-preview-head" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+              <label class="settings-check" style="display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:700;color:var(--primary);cursor:pointer;background:#F0FDF4;border:1px solid #86EFAC;padding:6px 12px;border-radius:8px;">
+                <input type="checkbox" id="req-letterhead-toggle" checked onchange="setDocLetterhead(this.checked)">
+                <span>Include Letterhead (Uncheck for No Letterhead)</span>
+              </label>
+              <button class="btn btn-sm btn-outline" onclick="switchView('archive')">&#128451;&#65039; Open Document Archive</button>
+            </div>
+            <div id="request-letterhead-preview"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== VIEW 5B: ACCOUNT STATEMENT REQUEST (IMAGE 2) ==================== -->
+      <section class="view-panel" id="view-account-statement">
+        <div class="view-header">
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+            <button type="button" class="btn btn-sm btn-outline session-back-arrow-btn" onclick="goBack()" title="Go back">&#8592; Back</button>
+            <h1 class="view-title">&#127974; REQUEST FOR ACCOUNT STATEMENT</h1>
+          </div>
+          <div class="action-btn-group" style="flex-wrap:wrap;gap:8px;">
+            <button class="btn btn-outline" onclick="openPreviewForAccountStatement()">&#128269; Preview</button>
+            <button class="btn btn-outline desktop-print-only" onclick="printAccountStatementLetter()">&#128424; Print</button>
+            <button class="btn btn-primary" onclick="exportAccountStatementLetter()">&#128190; Save</button>
+          </div>
+        </div>
+
+        <div class="requests-layout">
+          <div class="data-card" style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+            <h3 style="font-size:14px;font-weight:800;color:var(--primary);">1. Statement Period &amp; Bank Details</h3>
+
+            <div class="form-grid-2">
+              <div class="form-group">
+                <label class="form-label" for="acct-stmt-month">Statement Month</label>
+                <select id="acct-stmt-month" class="form-select" onchange="onAccountStatementParamsChange()">
+                  <option value="1">January</option>
+                  <option value="2">February</option>
+                  <option value="3">March</option>
+                  <option value="4">April</option>
+                  <option value="5">May</option>
+                  <option value="6">June</option>
+                  <option value="7">July</option>
+                  <option value="8" selected>August</option>
+                  <option value="9">September</option>
+                  <option value="10">October</option>
+                  <option value="11">November</option>
+                  <option value="12">December</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="acct-stmt-year">Statement Year</label>
+                <select id="acct-stmt-year" class="form-select" onchange="onAccountStatementParamsChange()">
+                  <option value="2024">2024</option>
+                  <option value="2025">2025</option>
+                  <option value="2026" selected>2026</option>
+                  <option value="2027">2027</option>
+                </select>
+              </div>
+            </div>
+
+            <div style="background:#ECFDF5;border:1px solid #86EFAC;border-radius:10px;padding:10px 12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px;">
+              <span style="font-size:12px;font-weight:700;color:#0F5328;">Statement Period (1st to Last Day):</span>
+              <strong id="acct-stmt-period-display" style="font-size:13.5px;font-weight:900;color:#0F5328;">01/08/2026 to 31/08/2026</strong>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="acct-stmt-letter-date">Letter Date</label>
+              <input type="text" id="acct-stmt-letter-date" class="form-input" value="1st September, 2026" oninput="onAccountStatementParamsChange()">
+            </div>
+
+            <div class="form-grid-2">
+              <div class="form-group">
+                <label class="form-label" for="acct-stmt-bank-name">Bank Name</label>
+                <input type="text" id="acct-stmt-bank-name" class="form-input" value="Zenith Bank Plc.," oninput="onAccountStatementParamsChange()">
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="acct-stmt-bank-address">Bank Branch / Address</label>
+                <input type="text" id="acct-stmt-bank-address" class="form-input" value="Oke-Ilewo, Abeokuta, Ogun State." oninput="onAccountStatementParamsChange()">
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="acct-stmt-salutation">Salutation</label>
+              <input type="text" id="acct-stmt-salutation" class="form-input" value="Dear Zenith Bank Customer Service," oninput="onAccountStatementParamsChange()">
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="acct-stmt-holder">Account Holder's Name</label>
+              <input type="text" id="acct-stmt-holder" class="form-input" value="TEEM BUSINESS NIG. ENT. OPS" oninput="onAccountStatementParamsChange()">
+            </div>
+
+            <div class="form-grid-2">
+              <div class="form-group">
+                <label class="form-label" for="acct-stmt-number">Account Number</label>
+                <input type="text" id="acct-stmt-number" class="form-input" value="1017702040" oninput="onAccountStatementParamsChange()">
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="acct-stmt-bvn">BVN</label>
+                <input type="text" id="acct-stmt-bvn" class="form-input" value="22194735148" oninput="onAccountStatementParamsChange()">
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label" for="acct-stmt-email">Delivery Email Address</label>
+              <input type="text" id="acct-stmt-email" class="form-input" value="ephspinctglobalservices@gmail.com" oninput="onAccountStatementParamsChange()">
+            </div>
+
+            <div class="form-grid-2">
+              <div class="form-group">
+                <label class="form-label" for="acct-stmt-signatory-name">Signatory Name</label>
+                <input type="text" id="acct-stmt-signatory-name" class="form-input" value="Ajibade Mojisola R." oninput="onAccountStatementParamsChange()">
+              </div>
+              <div class="form-group">
+                <label class="form-label" for="acct-stmt-signatory-title">Signatory Title</label>
+                <input type="text" id="acct-stmt-signatory-title" class="form-input" value="Managing Director" oninput="onAccountStatementParamsChange()">
+              </div>
+            </div>
+
+            <div class="req-action-row" style="display:flex;gap:8px;flex-wrap:nowrap;">
+              <button class="btn btn-outline" style="flex:1;" onclick="openPreviewForAccountStatement()">&#128269; Preview</button>
+              <button class="btn btn-outline desktop-print-only" style="flex:1;" onclick="printAccountStatementLetter()">&#128424; Print</button>
+              <button class="btn btn-secondary" style="flex:1;" onclick="exportAccountStatementLetter()">&#128190; Save</button>
+            </div>
+          </div>
+
+          <div class="req-preview-col">
+            <div class="req-preview-head" style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+              <label class="settings-check" style="display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:700;color:var(--primary);cursor:pointer;background:#F0FDF4;border:1px solid #86EFAC;padding:6px 12px;border-radius:8px;">
+                <input type="checkbox" id="acct-stmt-letterhead-toggle" checked onchange="setAccountStatementLetterhead(this.checked)">
+                <span>Include Letterhead (Uncheck for No Letterhead)</span>
+              </label>
+            </div>
+            <div id="account-statement-letter-preview"></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== VIEW 6: OUTSTANDING RADAR ==================== -->
+      <section class="view-panel" id="view-debtors">
+        <div class="view-header">
+          <div>
+            <h1 class="view-title" style="color:var(--danger-red);">&#128176; OUTSTANDING PAYMENT RADAR</h1>
+          </div>
+          <div class="action-btn-group" style="flex-wrap:wrap;gap:8px;">
+            <select id="debtor-sector-select" class="form-select" style="min-width:195px;font-weight:700;" onchange="setDebtorReportSector(this.value)" title="Select sector to fetch Outstanding Facilities report">
+              <option value="Commercial">Commercial Sector</option>
+              <option value="Industrial">Industrial Sector</option>
+              <option value="Agricultural Waste">Agricultural Waste</option>
+              <option value="Construction Waste">Construction Waste</option>
+              <option value="Medical">Medical Sector</option>
+              <option value="Institutional">Institutional Sector</option>
+              <option value="all">All Sectors Combined</option>
+            </select>
+            <button class="btn btn-outline" id="btn-preview-debtor-report" onclick="openPreviewForDebtors()">&#128269; Preview</button>
+            <button class="btn btn-outline desktop-print-only" id="btn-print-debtor-report" onclick="printDebtorReport()">&#128424; Print</button>
+            <button class="btn btn-primary" id="btn-save-debtor-pdf" onclick="saveDebtorReportPdf()">&#128190; Save</button>
+            <span class="badge badge-danger" id="debtor-sector-summary-badge" style="padding:8px 12px;font-size:12px;">0 Outstanding</span>
+          </div>
+        </div>
+
+        <div class="data-card">
+          <div class="card-header-bar" style="display:none;">
+            <div class="filter-tabs" id="debtor-sector-tabs">
+              <button class="filter-tab active" data-sector="Commercial" onclick="setDebtorReportSector('Commercial')">Commercial</button>
+              <button class="filter-tab" data-sector="Industrial" onclick="setDebtorReportSector('Industrial')">Industrial</button>
+              <button class="filter-tab" data-sector="Agricultural Waste" onclick="setDebtorReportSector('Agricultural Waste')">Agricultural</button>
+              <button class="filter-tab" data-sector="Construction Waste" onclick="setDebtorReportSector('Construction Waste')">Construction</button>
+              <button class="filter-tab" data-sector="Medical" onclick="setDebtorReportSector('Medical')">Medical</button>
+              <button class="filter-tab" data-sector="Institutional" onclick="setDebtorReportSector('Institutional')">Institutional</button>
+              <button class="filter-tab" data-sector="all" onclick="setDebtorReportSector('all')">All Sectors</button>
+            </div>
+          </div>
+
+          <!-- LIVE A4 REPORT SHEET FOR SELECTED SECTOR: OUTSTANDING FACILITIES -->
+          <div class="debtor-report-sheet" id="debtor-report-sheet">
+            <div class="debtor-report-sheet-head">
+              <div>
+                <h2 class="debtor-report-heading" id="debtor-report-heading">OUTSTANDING FACILITIES</h2>
+                <p class="debtor-report-sub" id="debtor-report-sub">SECTOR: COMMERCIAL &bull; AS AT TUESDAY, 20 OCTOBER 2026</p>
+              </div>
+            </div>
+            <div class="data-table-container">
+              <table class="data-table debtor-report-table" id="debtor-report-table">
+                <thead>
+                  <tr>
+                    <th style="width:70px;">S/N</th>
+                    <th>FACILITIES</th>
+                    <th style="width:160px;text-align:center;">NO OF MONTHS</th>
+                    <th style="width:240px;">MONTHS</th>
+                  </tr>
+                </thead>
+                <tbody id="debtor-report-table-body"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <div style="padding:14px 20px 6px;border-top:1px solid var(--border-subtle);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+            <strong style="font-size:12px;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-muted);">Detailed Radar &amp; Payment Actions (<span id="debtor-detail-sector-label">Commercial</span>)</strong>
+          </div>
+          <div class="data-table-container">
+            <table class="data-table">
+              <thead><tr><th>S/N</th><th>FACILITIES</th><th>SECTOR</th><th>NO OF MONTHS</th><th>MONTHS</th><th>ARREARS</th><th>SUPERVISOR</th><th>ACTIONS</th></tr></thead>
+              <tbody id="debtor-radar-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== VIEW 6B: MONTHLY REPORT (INCOME & EXPENDITURE ANALYSIS) ==================== -->
+      <section class="view-panel" id="view-monthly-report">
+        <div class="view-header">
+          <div>
+            <h1 class="view-title" id="monthly-report-main-title">&#128202; MONTHLY INCOME &amp; EXPENDITURE REPORT</h1>
+          </div>
+          <div class="action-btn-group" style="flex-wrap:wrap;gap:8px;">
+            <select id="monthly-report-period-select" class="form-select" style="min-width:190px;font-weight:700;" onchange="setMonthlyReportPeriod(this.value)" title="Select month for Income &amp; Expenditure Analysis">
+              <option value="October 2026">October 2026</option>
+              <option value="September 2026">September 2026</option>
+              <option value="August 2026">August 2026</option>
+              <option value="July 2026">July 2026</option>
+              <option value="June 2026">June 2026</option>
+              <option value="May 2026">May 2026</option>
+              <option value="April 2026">April 2026</option>
+              <option value="March 2026">March 2026</option>
+              <option value="February 2026">February 2026</option>
+              <option value="January 2026">January 2026</option>
+            </select>
+            <button class="btn btn-outline admin-only" id="btn-preview-monthly-report" onclick="openPreviewForMonthlyReport()">&#128269; Preview</button>
+            <button class="btn btn-outline desktop-print-only admin-only" id="btn-print-monthly-report" onclick="printMonthlyReport()">&#128424; Print</button>
+            <button class="btn btn-primary admin-only" id="btn-save-monthly-pdf" onclick="saveMonthlyReportPdf()">&#128190; Save</button>
+          </div>
+        </div>
+
+        <!-- KPI SUMMARY STRIP -->
+        <div class="mr-kpi-grid admin-only" id="mr-kpi-grid">
+          <div class="mr-kpi-card">
+            <span class="mr-kpi-label">SEC 1 &bull; COMPACTOR IGR</span>
+            <strong class="mr-kpi-val green" id="mr-kpi-igr">&#8358;0</strong>
+            <span class="mr-kpi-sub" id="mr-kpi-igr-sub">TEEM + Partner Vehicle Trips</span>
+          </div>
+          <div class="mr-kpi-card">
+            <span class="mr-kpi-label">SEC 3 &bull; MUNICIPAL REVENUE</span>
+            <strong class="mr-kpi-val green" id="mr-kpi-municipal">&#8358;0</strong>
+            <span class="mr-kpi-sub" id="mr-kpi-municipal-sub">TEEM Acc + OGWAMA Acc</span>
+          </div>
+          <div class="mr-kpi-card">
+            <span class="mr-kpi-label">SEC 2, 4 &amp; 5 &bull; TOTAL EXPENSES</span>
+            <strong class="mr-kpi-val red" id="mr-kpi-expenses">&#8358;0</strong>
+            <span class="mr-kpi-sub" id="mr-kpi-expenses-sub">Salary + Fuel + Repairs</span>
+          </div>
+          <div class="mr-kpi-card">
+            <span class="mr-kpi-label">SEC 6 &bull; NET INCOME GENERATED</span>
+            <strong class="mr-kpi-val" id="mr-kpi-net">&#8358;0</strong>
+            <span class="mr-kpi-sub" id="mr-kpi-net-sub">Total Revenue minus Expenses</span>
+          </div>
+        </div>
+
+        <!-- FORMAL A4 MONTHLY REPORT SHEET (MATCHING SAMPLE IMAGE 3 & IMAGE 4) -->
+        <div class="data-card mr-paper-sheet" id="monthly-report-paper">
+          <div class="mr-doc-banner">
+            <h2 class="mr-doc-main-heading" id="mr-doc-heading">OCTOBER 2026 INCOME AND EXPENDITURE ANALYSIS</h2>
+          </div>
+
+          <!-- SECTION 1: INDUSTRIAL EVACUATION (TEEM BUSINESS + PARTNER COMPANY VEHICLE USAGE) -->
+          <div class="mr-section-block admin-only" id="mr-section-1">
+            <div class="mr-section-bar">
+              <div>
+                <h3 class="mr-section-title">SECTION 1: INDUSTRIAL EVACUATION (VEHICLE USAGE &amp; TRIPS)</h3>
+                <p class="mr-section-note">Allocated amount for vehicle usage is calculated automatically by multiplying <strong>No of Trips &times; Rate per Trip</strong>. Includes TEEM Business industrial evacuations and any external operator/group using a TEEM vehicle.</p>
+              </div>
+              <div class="action-btn-group admin-only">
+                <button type="button" class="btn btn-sm btn-outline admin-only" onclick="syncMonthlyIndustrialFromLogs()" title="Import logged industrial evacuations for this month">&#128260; Sync Logged Evacuations</button>
+                <button type="button" class="btn btn-sm btn-primary admin-only" onclick="openMonthlyIndModal()">+ Add Evacuation Trip</button>
+              </div>
+            </div>
+            <div class="data-table-container">
+              <table class="mr-formal-table" id="mr-table-industrial">
+                <tbody id="mr-industrial-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- SECTION 2: SALARY SCHEDULE -->
+          <div class="mr-section-block admin-only" id="mr-section-2">
+            <div class="mr-section-bar">
+              <div>
+                <h3 class="mr-section-title" id="mr-sec2-title">SECTION 2: SALARY SCHEDULE FOR THE MONTH OF OCTOBER, 2026</h3>
+                <p class="mr-section-note">Officer name, bank, account number, and monthly salary amount.</p>
+              </div>
+              <div class="action-btn-group admin-only">
+                <button type="button" class="btn btn-sm btn-primary" onclick="openMonthlySalaryModal()">+ Add Officer Salary</button>
+              </div>
+            </div>
+            <div class="data-table-container">
+              <table class="mr-formal-table" id="mr-table-salary">
+                <thead>
+                  <tr class="mr-table-title-row"><th colspan="6" id="mr-salary-banner">SALARY SCHEDULE FOR THE MONTH OF OCTOBER, 2026</th></tr>
+                  <tr>
+                    <th style="width:58px;">S/N</th>
+                    <th>NAMES</th>
+                    <th style="width:160px;">BANKER</th>
+                    <th style="width:170px;">ACCT.NO</th>
+                    <th style="width:165px;">AMOUNT</th>
+                    <th class="mr-col-actions admin-only" style="width:110px;">ACTIONS</th>
+                  </tr>
+                </thead>
+                <tbody id="mr-salary-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- SECTION 3: GENERATED REVENUE FROM MUNICIPAL WASTE -->
+          <div class="mr-section-block admin-only" id="mr-section-3">
+            <div class="mr-section-bar">
+              <div>
+                <h3 class="mr-section-title">SECTION 3: MUNICIPAL ANALYSIS FOR TEEM BUSINESS (REVENUE BREAKDOWN)</h3>
+                <p class="mr-section-note">Supervisor breakdown of money paid into <strong>TEEM Account</strong> versus <strong>OGWAMA Account</strong> from municipal waste collection.</p>
+              </div>
+              <div class="action-btn-group admin-only">
+                <button type="button" class="btn btn-sm btn-primary" onclick="openMonthlyMunicipalModal()">+ Add Supervisor Revenue</button>
+              </div>
+            </div>
+            <div class="data-table-container">
+              <table class="mr-formal-table" id="mr-table-municipal">
+                <thead>
+                  <tr class="mr-table-title-row"><th colspan="6">BREAKDOWN ANALYSIS &mdash; MUNICIPAL REVENUE (TEEM / OGWAMA)</th></tr>
+                  <tr>
+                    <th style="width:58px;">S/N</th>
+                    <th>SUPERVISOR</th>
+                    <th style="width:190px;">PAID TO TEEM ACC (&#8358;)</th>
+                    <th style="width:190px;">PAID TO OGWAMA ACC (&#8358;)</th>
+                    <th style="width:190px;">TOTAL GENERATED (&#8358;)</th>
+                    <th class="mr-col-actions admin-only" style="width:110px;">ACTIONS</th>
+                  </tr>
+                </thead>
+                <tbody id="mr-municipal-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- SECTION 4: FUEL PURCHASED -->
+          <div class="mr-section-block" id="mr-section-4">
+            <div class="mr-section-bar">
+              <div>
+                <h3 class="mr-section-title">SECTION 4: FUEL PURCHASED</h3>
+                <p class="mr-section-note">Date, fuel type (Diesel or Petrol), number of litres, amount per litre, and auto-calculated total.</p>
+              </div>
+              <div class="action-btn-group">
+                <button type="button" class="btn btn-sm btn-primary" onclick="openMonthlyFuelModal()">+ Add Fuel Purchase</button>
+              </div>
+            </div>
+            <div class="data-table-container">
+              <table class="mr-formal-table" id="mr-table-fuel">
+                <thead>
+                  <tr>
+                    <th style="width:58px;">S/N</th>
+                    <th style="width:120px;">DATE</th>
+                    <th style="width:140px;">TYPE OF FUEL</th>
+                    <th>NO OF LITRES</th>
+                    <th style="width:165px;">AMOUNT / LITRE (&#8358;)</th>
+                    <th style="width:165px;">TOTAL (&#8358;)</th>
+                    <th class="mr-col-actions" style="width:110px;">ACTIONS</th>
+                  </tr>
+                </thead>
+                <tbody id="mr-fuel-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- SECTION 5: VEHICLE REPAIR (IF ANY) -->
+          <div class="mr-section-block" id="mr-section-5">
+            <div class="mr-section-bar">
+              <div>
+                <h3 class="mr-section-title">SECTION 5: VEHICLE REPAIR &amp; MAINTENANCE</h3>
+                <p class="mr-section-note">Record any vehicle repair particulars and cost for the month (shows &#8358;0 when there are no repairs).</p>
+              </div>
+              <div class="action-btn-group">
+                <button type="button" class="btn btn-sm btn-primary" onclick="openMonthlyRepairModal()">+ Add Vehicle Repair</button>
+              </div>
+            </div>
+            <div class="data-table-container">
+              <table class="mr-formal-table" id="mr-table-repair">
+                <thead>
+                  <tr>
+                    <th style="width:58px;">S/N</th>
+                    <th style="width:220px;">VEHICLE</th>
+                    <th>DESCRIPTION / PARTICULAR(S)</th>
+                    <th style="width:170px;">AMOUNT (&#8358;)</th>
+                    <th class="mr-col-actions" style="width:110px;">ACTIONS</th>
+                  </tr>
+                </thead>
+                <tbody id="mr-repair-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- SECTION 6: BREAKDOWN SUMMARY (SUMMARY OF EXPENDITURE AND REVENUE) -->
+          <div class="mr-section-block admin-only" id="mr-section-6">
+            <div class="mr-section-bar">
+              <div>
+                <h3 class="mr-section-title">SECTION 6: SUMMARY OF EXPENDITURE AND REVENUE</h3>
+                <p class="mr-section-note">Automatically compiled from Sections 1&ndash;5: subtracts Total Expenses (Salary + Fuel Purchased + Vehicle Repair) from Total Revenue (Municipal Evacuation + IGR from Compactor).</p>
+              </div>
+            </div>
+            <div class="data-table-container">
+              <table class="mr-formal-table" id="mr-table-summary">
+                <tbody id="mr-summary-tbody"></tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== VIEW 7: DOCUMENT ARCHIVE ==================== -->
+      <section class="view-panel" id="view-archive">
+        <div class="view-header">
+          <div>
+            <h1 class="view-title">&#128451;&#65039; DOCUMENT ARCHIVE</h1>
+          </div>
+          <div class="action-btn-group">
+            <span class="badge badge-category" id="archive-count">0 document(s)</span>
+            <button class="btn btn-outline" onclick="switchView('settings')">&#9881;&#65039; Archive &amp; Cloud Settings</button>
+          </div>
+        </div>
+
+        <div class="data-card">
+          <div class="data-table-container">
+            <table class="data-table">
+              <thead><tr><th>REFERENCE &amp; TITLE</th><th>TYPE</th><th>ARCHIVED</th><th>VALUE</th><th>PAGES</th><th>ACTIONS</th></tr></thead>
+              <tbody id="archive-table-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== VIEW 8: SUPERVISORS ==================== -->
+      <section class="view-panel" id="view-supervisors">
+        <div class="view-header">
+          <div>
+            <h1 class="view-title">FIELD SUPERVISORS MASTER DIRECTORY</h1>
+          </div>
+          <div class="action-btn-group">
+            <button class="btn btn-outline" onclick="switchView('settings')">&#9881;&#65039; Add / Delete Supervisors</button>
+          </div>
+        </div>
+
+        <div class="data-card">
+          <div class="data-table-container">
+            <table class="data-table">
+              <thead><tr><th>SUPERVISOR NAME</th><th>PHONE</th><th>ASSIGNED ZONE / SCOPE</th><th>STATUS</th></tr></thead>
+              <tbody id="supervisors-table-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== VIEW 9: CHAT ==================== -->
+      <section class="view-panel" id="view-chat">
+        <div class="view-header">
+          <div>
+            <h1 class="view-title">OPERATIONS LIVE CHAT &amp; DISPATCH ROOM</h1>
+          </div>
+        </div>
+
+        <div class="chat-container">
+          <div class="chat-header">
+            <div>
+              <strong style="font-size:14px;">TEEM Operations Channel</strong>
+              <div style="font-size:11.5px;color:var(--text-muted);">All field leads connected</div>
+            </div>
+            <span class="badge badge-success">&bull; Online</span>
+          </div>
+          <div class="chat-messages-box" id="chat-messages-stream"></div>
+          <form class="chat-input-bar" onsubmit="sendChatMessage(event)">
+            <input type="text" id="chat-input-text" class="form-input" style="flex:1;" placeholder="Type a dispatch message to the team..." autocomplete="off">
+            <select id="chat-msg-priority" class="form-select" style="width:140px;">
+              <option value="General">General</option>
+              <option value="Dispatch">Dispatch</option>
+              <option value="Urgent">Urgent</option>
+            </select>
+            <button type="submit" class="btn btn-primary">Send</button>
+          </form>
+        </div>
+      </section>
+
+      <!-- ==================== VIEW 10: SETTINGS ==================== -->
+      <section class="view-panel" id="view-settings">
+        <div class="view-header">
+          <div>
+            <h1 class="view-title">&#9881;&#65039; SETTINGS &amp; ADMIN CONTROL</h1>
+          </div>
+          <span class="badge badge-danger admin-only" id="settings-access-badge" style="padding:6px 12px;font-size:11.5px;">&#128274; Administrator Access Only</span>
+        </div>
+
+        <div class="settings-grid settings-grid-v26">
+          <div class="settings-column">
+            <div class="settings-card">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
+                <h3 class="settings-card-title" style="margin:0;">&#128100; Registered Accounts &amp; Access Control</h3>
+                <div class="accounts-create-head admin-only" style="margin:0;">
+                  <button type="button" class="btn btn-sm btn-primary" id="account-add-btn" onclick="toggleAccountCreateForm()">&#10133; Add Account</button>
+                </div>
+              </div>
+              <p class="settings-card-note" id="accounts-card-note" style="display:none;"></p>
+              <form id="form-add-user" onsubmit="saveAddUser(event)" class="settings-form admin-only" style="display:none;">
+                <div class="form-grid-2">
+                  <div class="form-group">
+                    <label class="form-label">First Name</label>
+                    <input type="text" id="usr-first" class="form-input" placeholder="First name" required>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Surname</label>
+                    <input type="text" id="usr-last" class="form-input" placeholder="Surname" required>
+                  </div>
+                </div>
+                <div class="form-grid-2">
+                  <div class="form-group">
+                    <label class="form-label">Role</label>
+                    <select id="usr-role" class="form-select" onchange="updateAdminQuotaNote()">
+                      <option value="Supervisor">Supervisor</option>
+                      <option value="User">User</option>
+                      <option value="Admin">Administrator</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Username</label>
+                    <input type="text" id="usr-username" class="form-input" placeholder="Username" required>
+                  </div>
+                </div>
+                <div class="form-grid-2">
+                  <div class="form-group">
+                    <label class="form-label">Password</label>
+                    <div class="password-field">
+                      <input type="password" id="usr-password" class="form-input" placeholder="Minimum 6 characters" required>
+                      <button type="button" class="password-peek"
+                          onclick="togglePasswordPeek('usr-password', this)"
+                          onmousedown="startPasswordPeek('usr-password', this)"
+                          onmouseup="stopPasswordPeek('usr-password', this)"
+                          onmouseleave="stopPasswordPeek('usr-password', this)"
+                          ontouchstart="startPasswordPeek('usr-password', this)"
+                          ontouchend="stopPasswordPeek('usr-password', this)"
+                          ontouchcancel="stopPasswordPeek('usr-password', this)"
+                          title="Show / hide password">&#128065;</button>
+                    </div>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Phone</label>
+                    <input type="text" id="usr-phone" class="form-input" placeholder="0803 000 0000">
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Assigned Zone / Scope</label>
+                  <input type="text" id="usr-zone" class="form-input" placeholder="Area or zone">
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Passport Photograph (optional)</label>
+                  <div class="photo-upload-row">
+                    <span id="usr-photo-preview" class="photo-preview">No photo</span>
+                    <div class="photo-upload-actions">
+                      <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('usr-photo-file').click()">&#128247; Upload Photo</button>
+                      <button type="button" class="btn btn-sm btn-outline" onclick="openPhotoEditorForInput('usr-photo-file', 'usr-photo-preview')">&#9999;&#65039; Zoom / Edit</button>
+                    </div>
+                  </div>
+                  <input type="file" id="usr-photo-file" class="photo-file-hidden" accept="image/*" onchange="readPhotoFile(this, 'usr-photo-preview')">
+                </div>
+                <div class="admin-quota-wrap">
+                  <div class="admin-quota-note" id="admin-quota-note">Active Administrators: 1 &bull; Unlimited Administrators &amp; Supervisors supported</div>
+                  <div class="admin-quota-bar"><span id="admin-quota-fill" style="width:100%"></span></div>
+                </div>
+                <div class="action-btn-group" style="margin-top:4px;">
+                  <button type="submit" class="btn btn-primary">&#10133; Add This Account</button>
+                  <button type="button" class="btn btn-outline" onclick="toggleAccountCreateForm(false)">Cancel</button>
+                </div>
+              </form>
+              <h4 class="settings-sub-title" style="margin-top:6px;">Registered Accounts <span class="sub-title-count" id="accounts-count">0</span></h4>
+              <div class="settings-table-wrap">
+                <table class="data-table">
+                  <thead><tr><th>USER</th><th>ROLE</th><th>USERNAME</th><th>PHONE</th><th>ACTIONS</th></tr></thead>
+                  <tbody id="users-table-body"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="settings-card" id="archive-card">
+              <h3 class="settings-card-title">&#9729;&#65039; Archive &amp; Cloud Storage (Supabase &amp; Google Apps Script)</h3>
+              <p class="settings-card-note" id="archive-card-note" style="display:none;"></p>
+              <form onsubmit="saveArchiveSettings(event)" class="settings-form">
+                <div class="form-group">
+                  <label class="form-label" for="company-name">Registered Company Name</label>
+                  <input type="text" id="company-name" name="companyName" class="form-input" value="Teem Business Nigeria Enterprises" placeholder="Teem Business Nigeria Enterprises" autocomplete="organization" spellcheck="false" oninput="onCompanyNameInput(this.value)">
+                </div>
+                <div class="form-grid-2">
+                  <div class="form-group">
+                    <label class="form-label" for="supabase-url">Supabase Project URL</label>
+                    <input type="text" id="supabase-url" class="form-input" value="https://seahqfjafdxjenzoggfa.supabase.co" placeholder="https://seahqfjafdxjenzoggfa.supabase.co" autocomplete="off">
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label" for="supabase-anon-key">Supabase Anon Public Key</label>
+                    <div class="password-field">
+                      <input type="password" id="supabase-anon-key" class="form-input" value="sb_publishable_Ehf0MazCtqvM7HFzQS0_Aw__wT4vnj-" placeholder="sb_publishable_..." autocomplete="off">
+                      <button type="button" class="password-peek"
+                          onclick="togglePasswordPeek('supabase-anon-key', this)"
+                          onmousedown="startPasswordPeek('supabase-anon-key', this)"
+                          onmouseup="stopPasswordPeek('supabase-anon-key', this)"
+                          onmouseleave="stopPasswordPeek('supabase-anon-key', this)"
+                          ontouchstart="startPasswordPeek('supabase-anon-key', this)"
+                          ontouchend="stopPasswordPeek('supabase-anon-key', this)"
+                          ontouchcancel="stopPasswordPeek('supabase-anon-key', this)"
+                          title="Show / hide key">&#128065;</button>
+                    </div>
+                  </div>
+                </div>
+                <div class="form-grid-2">
+                  <div class="form-group">
+                    <label class="form-label" for="gdrive-webapp-url">Google Apps Script Web App URL</label>
+                    <input type="text" id="gdrive-webapp-url" class="form-input" value="https://script.google.com/macros/s/AKfycbxGgcqW2LbfA38rQpNhTFB_jhoFYMfB9c3fpY05L5DQic1NgWmZeWzmF7YwA5ZpIS4/exec" placeholder="https://script.google.com/macros/s/AKfycb.../exec" autocomplete="off">
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label" for="gdrive-root-folder">Google Drive Root Folder</label>
+                    <input type="text" id="gdrive-root-folder" class="form-input" value="TEEM BUSINESS PORTAL" placeholder="TEEM BUSINESS PORTAL" autocomplete="off">
+                  </div>
+                </div>
+                <input type="hidden" id="gdrive-client-id" value="">
+                <input type="hidden" id="gdrive-access-token" value="">
+                <label class="settings-check">
+                  <input type="checkbox" id="archive-autosave" checked>
+                  <span>Automatically save every printed request letter to Google Drive inside <strong>TEEM BUSINESS PORTAL / &lt;Category&gt;</strong></span>
+                </label>
+                <div class="settings-actions archive-actions-grid">
+                  <button type="submit" class="btn btn-primary">&#128190; Save Settings</button>
+                  <button type="button" class="btn btn-outline" onclick="connectAndSyncSupabase()">&#127760; Connect &amp; Sync Supabase</button>
+                  <button type="button" class="btn btn-outline" onclick="connectGoogleDrive()">&#9729;&#65039; Connect Google Apps Script</button>
+                  <button type="button" class="btn btn-outline" onclick="toggleCloudSetupGuide()">&#128214; Setup Guide &amp; Apps Script Code</button>
+                </div>
+
+                <!-- PULL / PUSH / RESET ACTIONS -->
+                <div class="cloud-sync-pill-row" id="cloud-sync-pill-row">
+                  <button type="button" class="btn cloud-sync-pill-btn" id="btn-pull-cloud-data" onclick="pullLatestCloudDataManual()">Pull Latest Cloud Data</button>
+                  <button type="button" class="btn cloud-sync-pill-btn" id="btn-push-cloud-data" onclick="pushLocalDataToCloudManual()">Push Local Data to Cloud</button>
+                  <button type="button" class="btn cloud-sync-pill-btn cloud-sync-reset-btn" id="btn-reset-local-data" onclick="resetAllLocalApplicationData()">Reset All Local Application Data</button>
+                </div>
+              </form>
+
+              <div id="cloud-setup-guide-box" class="cloud-setup-guide" style="display:none;margin-top:12px;">
+                <div class="cloud-setup-guide-section">
+                  <h4>&#9729;&#65039; Part A — Google Drive Connect &amp; Two-Way Device Sync via Google Apps Script</h4>
+                  <ol class="cloud-guide-steps">
+                    <li>Open <strong>https://script.google.com</strong> and click <strong>New project</strong>.</li>
+                    <li>Paste the code below into <code>Code.gs</code>:
+                      <div style="margin:6px 0;"><button type="button" class="btn btn-sm btn-primary" onclick="copyGoogleAppsScriptCode()">&#128203; Copy Google Apps Script Code</button></div>
+                      <pre class="cloud-sql-box" id="gscript-code-snippet">function doGet(e) {
+  var rootName = (e &amp;&amp; e.parameter &amp;&amp; e.parameter.rootFolder) || 'TEEM BUSINESS PORTAL';
+  var rootIt = DriveApp.getFoldersByName(rootName);
+  if (!rootIt.hasNext()) {
+    return ContentService.createTextOutput(JSON.stringify({ ok: true, empty: true })).setMimeType(ContentService.MimeType.JSON);
+  }
+  var root = rootIt.next();
+  var bIt = root.getFoldersByName('Backups');
+  if (!bIt.hasNext()) {
+    return ContentService.createTextOutput(JSON.stringify({ ok: true, empty: true })).setMimeType(ContentService.MimeType.JSON);
+  }
+  var bFolder = bIt.next();
+  var fIt = bFolder.getFilesByName('TEEM_AutoBackup_Latest.json');
+  if (!fIt.hasNext()) {
+    return ContentService.createTextOutput(JSON.stringify({ ok: true, empty: true })).setMimeType(ContentService.MimeType.JSON);
+  }
+  var raw = fIt.next().getBlob().getDataAsString();
+  return ContentService.createTextOutput(raw).setMimeType(ContentService.MimeType.JSON);
+}
+
+function doPost(e) {
+  var data = JSON.parse(e.postData.contents || '{}');
+  var rootName = data.rootFolder || 'TEEM BUSINESS PORTAL';
+  var rootIt = DriveApp.getFoldersByName(rootName);
+  var rootAlreadyExisted = rootIt.hasNext();
+  var root = rootAlreadyExisted ? rootIt.next() : DriveApp.createFolder(rootName);
+  var sectors = ['Commercial','Industrial','Medical','Institutional','Agricultural Waste','Construction Waste','Municipal','Monthly Reports','Backups'];
+  for (var i = 0; i &lt; sectors.length; i++) {
+    if (!root.getFoldersByName(sectors[i]).hasNext()) root.createFolder(sectors[i]);
+  }
+  if (data.action === 'pull_state') {
+    return doGet({ parameter: { rootFolder: rootName } });
+  }
+  if ((data.action === 'save_request' || data.action === 'save_monthly_report') &amp;&amp; data.pdfBase64) {
+    var catName = data.categoryFolder || (data.action === 'save_monthly_report' ? 'Monthly Reports' : 'Commercial');
+    var catIt = root.getFoldersByName(catName);
+    var catFolder = catIt.hasNext() ? catIt.next() : root.createFolder(catName);
+    var fileName = data.fileName || ('TEEM_' + catName + '_Request.pdf');
+    var existingFileIt = catFolder.getFilesByName(fileName);
+    if (existingFileIt.hasNext()) {
+      var existingFile = existingFileIt.next();
+      return ContentService.createTextOutput(JSON.stringify({ ok: true, alreadyExists: true, message: 'Success: "' + fileName + '" already exists in ' + rootName + '/' + catName + '.', folder: rootName + '/' + catName, name: existingFile.getName(), url: existingFile.getUrl() })).setMimeType(ContentService.MimeType.JSON);
+    }
+    var bytes = Utilities.base64Decode(data.pdfBase64);
+    var blob = Utilities.newBlob(bytes, 'application/pdf', fileName);
+    var file = catFolder.createFile(blob);
+    return ContentService.createTextOutput(JSON.stringify({ ok: true, alreadyExists: false, folder: rootName + '/' + catName, name: file.getName(), url: file.getUrl() })).setMimeType(ContentService.MimeType.JSON);
+  }
+  var snap = data.snapshot || data;
+  if (snap &amp;&amp; snap.state &amp;&amp; snap.state.monthlyReports) {
+    var mrFolder = root.getFoldersByName('Monthly Reports').next();
+    var months = Object.keys(snap.state.monthlyReports);
+    for (var m = 0; m &lt; months.length; m++) {
+      var period = months[m];
+      var mrFile = 'TEEM_Monthly_Report_' + period.replace(/\s+/g, '_') + '.json';
+      var mrBody = JSON.stringify(snap.state.monthlyReports[period], null, 2);
+      var mrEx = mrFolder.getFilesByName(mrFile);
+      if (mrEx.hasNext()) mrEx.next().setContent(mrBody);
+      else mrFolder.createFile(mrFile, mrBody, MimeType.PLAIN_TEXT);
+    }
+  }
+  var bFolder = root.getFoldersByName('Backups').next();
+  var bName = 'TEEM_AutoBackup_Latest.json';
+  var existing = bFolder.getFilesByName(bName);
+  var content = JSON.stringify(snap, null, 2);
+  if (existing.hasNext()) { existing.next().setContent(content); }
+  else { bFolder.createFile(bName, content, MimeType.PLAIN_TEXT); }
+  return ContentService.createTextOutput(JSON.stringify({ ok: true, folderAlreadyExisted: rootAlreadyExisted, message: rootAlreadyExisted ? ('Success: Folder "' + rootName + '" already exists!') : ('Success: Folder "' + rootName + '" created!'), folder: rootName + '/Backups', savedAt: new Date().toISOString() })).setMimeType(ContentService.MimeType.JSON);
+}</pre>
+                    </li>
+                    <li>Click <strong>Deploy &rarr; New deployment</strong>, choose type <strong>Web app</strong>, set <em>Execute as</em> to <strong>Me</strong>, and set <em>Who has access</em> to <strong>Anyone</strong>.</li>
+                  </ol>
+                </div>
+                <div class="cloud-setup-guide-section" style="margin-top:10px;">
+                  <h4>&#127760; Part B — Connect Supabase (<code>cloud/supabase-schema.sql</code>)</h4>
+                  <ol class="cloud-guide-steps">
+                    <li>Open your Supabase SQL Editor and run <code>cloud/supabase-schema.sql</code>:
+                      <pre class="cloud-sql-box" id="supabase-sql-snippet">create table if not exists public.teem_sync (
+  id text primary key,
+  company_name text,
+  payload jsonb not null,
+  updated_at timestamptz default now()
+);
+alter table public.teem_sync enable row level security;
+create policy "Allow public read/write for TEEM devices"
+  on public.teem_sync for all
+  using (true) with check (true);</pre>
+                    </li>
+                  </ol>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="settings-column">
+            <div class="settings-card">
+              <h3 class="settings-card-title">&#128666; Fleet Vehicle Management</h3>
+              <form id="form-add-vehicle" onsubmit="saveAddVehicle(event)" class="settings-form admin-only">
+                <div class="form-group">
+                  <label class="form-label">Vehicle Name / Plate</label>
+                  <input type="text" id="veh-name" class="form-input" placeholder="Vehicle name and fleet code" required>
+                </div>
+                <div class="form-grid-2">
+                  <div class="form-group">
+                    <label class="form-label">Vehicle Type</label>
+                    <select id="veh-type" class="form-select">
+                      <option>Compactor Truck</option>
+                      <option>Open Haulage Truck</option>
+                      <option>Roll-on Roll-off (RoRo)</option>
+                      <option>Heavy Duty Tipper</option>
+                      <option>MM PSP Compactor</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Payload Capacity</label>
+                    <input type="text" id="veh-capacity" class="form-input" placeholder="Capacity in tons">
+                  </div>
+                </div>
+                <button type="submit" class="btn btn-primary" style="width:100%;">+ Add Vehicle To Fleet</button>
+              </form>
+              <div class="settings-table-wrap">
+                <table class="data-table">
+                  <thead><tr><th>VEHICLE</th><th>TYPE</th><th>CAPACITY</th><th>STATUS</th><th>ACTION</th></tr></thead>
+                  <tbody id="vehicles-table-body"></tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="settings-card danger-card admin-only">
+              <h3 class="settings-card-title danger">&#128465;&#65039; Permanent Deletion Console</h3>
+              <form onsubmit="executeAdminDeletion(event)" class="settings-form">
+                <div class="form-grid-2">
+                  <div class="form-group">
+                    <label class="form-label">Record Type</label>
+                    <select id="delete-target-type" class="form-select" onchange="renderSettingsConsole()">
+                      <option value="facility">Facility Client (all sectors)</option>
+                      <option value="street">Municipal Street</option>
+                      <option value="vehicle">Fleet Vehicle</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Select Record To Delete</label>
+                    <select id="delete-target-id" class="form-select"></select>
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label class="form-label">Administrator Password</label>
+                  <div class="password-field">
+                    <input type="password" id="admin-delete-password" class="form-input" placeholder="Enter designated admin password" required>
+                    <button type="button" class="password-peek"
+                        onclick="togglePasswordPeek('admin-delete-password', this)"
+                        onmousedown="startPasswordPeek('admin-delete-password', this)"
+                        onmouseup="stopPasswordPeek('admin-delete-password', this)"
+                        onmouseleave="stopPasswordPeek('admin-delete-password', this)"
+                        ontouchstart="startPasswordPeek('admin-delete-password', this)"
+                        ontouchend="stopPasswordPeek('admin-delete-password', this)"
+                        ontouchcancel="stopPasswordPeek('admin-delete-password', this)"
+                        title="Show / hide password">&#128065;</button>
+                  </div>
+                </div>
+                <button type="submit" class="btn btn-danger" style="width:100%;">&#128274; Authorise &amp; Delete Permanently</button>
+              </form>
+            </div>
+
+            <div class="settings-card" id="backup-restore-card">
+              <h3 class="settings-card-title" style="margin-bottom:8px;">&#128190; Backup and restore</h3>
+              <div class="backup-last-box" id="auto-backup-status-strip">
+                Last automatic backup: <span id="auto-backup-last-time">19/10/2026, 14:00:00</span>
+              </div>
+              <div class="backup-btn-row">
+                <button type="button" class="btn backup-btn-download" onclick="downloadFullBackupFile()">
+                  <span class="backup-btn-icon">&#8681;</span> Download backup
+                </button>
+                <button type="button" class="btn backup-btn-restore" onclick="triggerUploadBackupFile()">
+                  <span class="backup-btn-icon">&#8679;</span> Restore backup
+                </button>
+                <input type="file" id="backup-file-upload-input" accept=".json,application/json" style="display:none;" onchange="handleUploadBackupFile(event)">
+              </div>
+              <div style="display:none;">
+                <span id="auto-backup-status-pill">Auto-Backup Every 1s Active</span>
+                <span id="auto-backup-targets-label">This Device + IndexedDB + Cloud</span>
+                <span id="auto-backup-count-label">1</span>
+                <input type="checkbox" id="auto-backup-enabled" checked onchange="toggleAutoBackup5s(this.checked)">
+                <select id="backup-checkpoint-select"></select>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <footer class="app-footer" id="app-footer">
+        &copy; 2026 TEEM Business Nigeria Enterprises. All Rights Reserved.
+      </footer>
+    </main>
+  </div>
+
+
+  <!-- ==================== SIGN UP SCREEN ==================== -->
+  <div class="signup-screen" id="signup-screen">
+    <div class="signup-shell">
+      <aside class="signup-brand">
+        <div class="signup-brand-center">
+          <img src="assets/teem_logo_light.png" alt="Teem Business Nigeria Enterprises" class="signup-logo">
+        </div>
+        <div class="auth-brand-base">
+          <div class="signup-brand-foot">
+            Already registered? <button type="button" class="signup-brand-link" onclick="hideSignupScreen()">Back to sign in</button>
+          </div>
+          <div class="auth-brand-copyright">&copy; 2026 TEEM Business Nigeria Enterprises. All Rights Reserved.</div>
+        </div>
+      </aside>
+
+      <section class="signup-form-wrap">
+        <div class="auth-head-row" id="signup-head-row">
+          <div>
+            <h1 class="signup-title">Create your account</h1>
+            <p class="signup-sub">Register your Supervisor or Administrator profile. Your account is activated immediately and synced across connected devices.</p>
+          </div>
+          <span class="auth-version-pill">v16</span>
+        </div>
+
+        <form onsubmit="submitSignupRequest(event)" class="signup-form" id="signup-form">
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label class="form-label">First Name</label>
+              <input type="text" id="su-first" class="form-input" placeholder="First name" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Surname</label>
+              <input type="text" id="su-last" class="form-input" placeholder="Surname" required>
+            </div>
+          </div>
+
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label class="form-label">Role Requested</label>
+              <select id="su-role" class="form-select" onchange="onSignupRoleChange()">
+                <option value="Supervisor">Supervisor</option>
+                <option value="Admin">Administrator</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Username</label>
+              <input type="text" id="su-username" class="form-input" placeholder="Username" autocapitalize="none" autocorrect="off" spellcheck="false" required>
+            </div>
+          </div>
+
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label class="form-label">Phone</label>
+              <input type="text" id="su-phone" class="form-input" placeholder="0803 000 0000" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Email (optional)</label>
+              <input type="email" id="su-email" class="form-input" placeholder="name@example.com" autocapitalize="none" autocorrect="off" spellcheck="false">
+            </div>
+          </div>
+
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label class="form-label">Choose A Password</label>
+              <div class="password-field">
+                <input type="password" id="su-password" class="form-input" placeholder="Minimum 6 characters" autocapitalize="none" autocorrect="off" spellcheck="false" required oninput="signupPasswordStrength(); checkPasswordPairMatch('su-password', 'su-password2', 'su-password-mismatch-hint')">
+                <button type="button" class="password-peek"
+                        onclick="togglePasswordPeek('su-password', this)"
+                        onmousedown="startPasswordPeek('su-password', this)"
+                        onmouseup="stopPasswordPeek('su-password', this)"
+                        onmouseleave="stopPasswordPeek('su-password', this)"
+                        ontouchstart="startPasswordPeek('su-password', this)"
+                        ontouchend="stopPasswordPeek('su-password', this)"
+                        ontouchcancel="stopPasswordPeek('su-password', this)"
+                        title="Show / hide password">&#128065;</button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Confirm Password</label>
+              <div class="password-field">
+                <input type="password" id="su-password2" class="form-input" placeholder="Repeat the password" autocapitalize="none" autocorrect="off" spellcheck="false" required oninput="checkPasswordPairMatch('su-password', 'su-password2', 'su-password-mismatch-hint')">
+                <button type="button" class="password-peek"
+                        onclick="togglePasswordPeek('su-password2', this)"
+                        onmousedown="startPasswordPeek('su-password2', this)"
+                        onmouseup="stopPasswordPeek('su-password2', this)"
+                        onmouseleave="stopPasswordPeek('su-password2', this)"
+                        ontouchstart="startPasswordPeek('su-password2', this)"
+                        ontouchend="stopPasswordPeek('su-password2', this)"
+                        ontouchcancel="stopPasswordPeek('su-password2', this)"
+                        title="Show / hide password">&#128065;</button>
+              </div>
+              <div id="su-password-mismatch-hint" class="password-mismatch-hint" style="display:none;color:#DC2626;font-size:11.5px;font-weight:700;margin-top:4px;">Password doesn't match</div>
+            </div>
+          </div>
+
+          <div class="signup-strength">
+            <span class="signup-strength-bar"><i id="su-strength-fill"></i></span>
+            <span class="signup-strength-text" id="su-strength-text">Password strength: -</span>
+          </div>
+
+          <label class="signup-terms">
+            <input type="checkbox" id="su-accept" required>
+            <span>I confirm the details above are correct and I will keep my password private.</span>
+          </label>
+
+          <div class="signup-error" id="signup-error"></div>
+
+          <div class="signup-actions">
+            <button type="submit" class="btn btn-primary signup-submit">Signup</button>
+            <button type="button" class="btn btn-outline" onclick="hideSignupScreen()">Cancel</button>
+          </div>
+        </form>
+
+        <div class="signup-done" id="signup-done" style="display:none;">
+          <div class="signup-done-badge">&#9989;</div>
+          <h3>Account Created &amp; Active</h3>
+          <p id="signup-done-text">Your details are stored on this device and synced to the portal.</p>
+          <button type="button" class="btn btn-primary signup-done-btn" onclick="hideSignupScreen()">Continue to Sign In &rarr;</button>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <!-- ==================== MODALS ==================== -->
+
+  <!-- LOGIN SCREEN -->
+  <div class="login-screen active" id="login-screen">
+    <div class="login-shell">
+      <aside class="login-brand">
+        <div class="signup-brand-center">
+          <img src="assets/teem_logo_light.png" alt="Teem Business Nigeria Enterprises" class="login-logo">
+        </div>
+        <div class="auth-brand-base">
+          <div class="auth-brand-copyright">&copy; 2026 TEEM Business Nigeria Enterprises. All Rights Reserved.</div>
+        </div>
+      </aside>
+
+      <div class="login-card">
+        <div id="login-main-panel">
+          <div class="auth-head-row">
+            <div>
+              <h1 class="login-title">Sign In</h1>
+              <p class="login-sub">Enter your username and password to access the TEEM Concession Portal.</p>
+            </div>
+            <span class="auth-version-pill">v16</span>
+          </div>
+
+          <form onsubmit="login(event)" class="login-form" id="login-form">
+            <div class="form-group">
+              <label class="form-label">Username</label>
+              <input type="text" id="login-username" class="form-input" placeholder="Enter your username" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Password</label>
+              <div class="password-field">
+                <input type="password" id="login-password" class="form-input" placeholder="Enter your password" autocomplete="current-password" autocapitalize="none" autocorrect="off" spellcheck="false" required>
+                <button type="button" class="password-peek"
+                        onclick="togglePasswordPeek('login-password', this)"
+                        onmousedown="startPasswordPeek('login-password', this)"
+                        onmouseup="stopPasswordPeek('login-password', this)"
+                        onmouseleave="stopPasswordPeek('login-password', this)"
+                        ontouchstart="startPasswordPeek('login-password', this)"
+                        ontouchend="stopPasswordPeek('login-password', this)"
+                        ontouchcancel="stopPasswordPeek('login-password', this)"
+                        title="Show / hide password" aria-label="Show / hide password">&#128065;</button>
+              </div>
+            </div>
+            <div class="login-error" id="login-error"></div>
+            <div class="login-actions-row">
+              <button type="submit" class="btn btn-primary login-btn">Sign In</button>
+              <label class="login-remember" for="remember-me">
+                <input type="checkbox" id="remember-me" class="form-checkbox">
+                <span class="login-remember-text">Remember me</span>
+              </label>
+            </div>
+            <div class="login-forgot-below">
+              <button type="button" class="forgot-password-link" id="forgot-password-trigger" onclick="showForgotPasswordPanel()">Forgot password?</button>
+            </div>
+          </form>
+
+          <div class="login-foot">
+            <span>No account yet?</span>
+            <button type="button" class="login-link" onclick="showSignupScreen()">Create an account &rarr;</button>
+          </div>
+        </div>
+
+        <!-- FORGOT PASSWORD RECOVERY PANEL -->
+        <div id="forgot-password-panel" class="forgot-password-panel" style="display:none;">
+          <div class="auth-head-row">
+            <div>
+              <h2 class="login-title">Reset Your Password</h2>
+              <p class="login-sub">Verify your account with your username and registered phone number or email address.</p>
+            </div>
+            <span class="auth-version-pill">v16</span>
+          </div>
+
+          <form onsubmit="submitForgotPassword(event)" class="login-form" id="forgot-password-form">
+            <div class="form-group">
+              <label class="form-label">Username</label>
+              <input type="text" id="fp-username" class="form-input" placeholder="Username" autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Registered Phone Number or Email</label>
+              <input type="text" id="fp-contact" class="form-input" placeholder="Phone number or email address" autocapitalize="none" autocorrect="off" spellcheck="false" required>
+            </div>
+            <div class="form-grid-2">
+              <div class="form-group">
+                <label class="form-label">New Password</label>
+                <div class="password-field">
+                  <input type="password" id="fp-password" class="form-input" placeholder="Min. 6 characters" autocapitalize="none" autocorrect="off" spellcheck="false" required oninput="checkPasswordPairMatch('fp-password', 'fp-password2', 'fp-password-mismatch-hint')">
+                  <button type="button" class="password-peek"
+                          onclick="togglePasswordPeek('fp-password', this)"
+                          onmousedown="startPasswordPeek('fp-password', this)"
+                          onmouseup="stopPasswordPeek('fp-password', this)"
+                          onmouseleave="stopPasswordPeek('fp-password', this)"
+                          ontouchstart="startPasswordPeek('fp-password', this)"
+                          ontouchend="stopPasswordPeek('fp-password', this)"
+                          ontouchcancel="stopPasswordPeek('fp-password', this)"
+                          title="Show / hide password">&#128065;</button>
+                </div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Confirm New Password</label>
+                <div class="password-field">
+                  <input type="password" id="fp-password2" class="form-input" placeholder="Repeat password" autocapitalize="none" autocorrect="off" spellcheck="false" required oninput="checkPasswordPairMatch('fp-password', 'fp-password2', 'fp-password-mismatch-hint')">
+                  <button type="button" class="password-peek"
+                          onclick="togglePasswordPeek('fp-password2', this)"
+                          onmousedown="startPasswordPeek('fp-password2', this)"
+                          onmouseup="stopPasswordPeek('fp-password2', this)"
+                          onmouseleave="stopPasswordPeek('fp-password2', this)"
+                          ontouchstart="startPasswordPeek('fp-password2', this)"
+                          ontouchend="stopPasswordPeek('fp-password2', this)"
+                          ontouchcancel="stopPasswordPeek('fp-password2', this)"
+                          title="Show / hide password">&#128065;</button>
+                </div>
+                <div id="fp-password-mismatch-hint" class="password-mismatch-hint" style="display:none;color:#DC2626;font-size:11.5px;font-weight:700;margin-top:4px;">Password doesn't match</div>
+              </div>
+            </div>
+            <div class="login-error" id="fp-error"></div>
+            <div class="signup-actions">
+              <button type="submit" class="btn btn-primary login-btn" id="fp-submit-btn" style="flex:1 1 auto;width:auto;">Reset Password</button>
+              <button type="button" class="btn btn-outline" onclick="hideForgotPasswordPanel()">Back to Sign In</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- EDIT / MANAGE ACCOUNT -->
+  <div class="modal-backdrop" id="modal-user-edit">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title" id="user-edit-title">&#128100; Edit Account</h3>
+        <button class="modal-close-btn" onclick="closeModal('modal-user-edit')">&#10005;</button>
+      </div>
+      <div class="modal-body">
+        <div class="profile-head">
+          <div class="profile-photo-lg" id="user-edit-photo">--</div>
+          <div>
+            <strong style="font-size:15px;" id="user-edit-name">Account</strong>
+            <div style="font-size:12px;color:var(--text-muted);" id="user-edit-meta"></div>
+          </div>
+        </div>
+
+        <form onsubmit="saveUserEdit(event)" class="settings-form">
+          <input type="hidden" id="ued-id">
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label class="form-label">First Name</label>
+              <input type="text" id="ued-first" class="form-input" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Surname</label>
+              <input type="text" id="ued-last" class="form-input" required>
+            </div>
+          </div>
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label class="form-label">Role</label>
+              <select id="ued-role" class="form-select" onchange="onUserEditRoleChange()">
+                <option value="Supervisor">Supervisor</option>
+                <option value="User">User</option>
+                <option value="Admin">Administrator</option>
+              </select>
+              <p class="form-hint" id="ued-role-hint"></p>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Username</label>
+              <input type="text" id="ued-username" class="form-input" required>
+            </div>
+          </div>
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label class="form-label">Phone</label>
+              <input type="text" id="ued-phone" class="form-input">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Email</label>
+              <input type="text" id="ued-email" class="form-input">
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Assigned Zone / Scope</label>
+            <input type="text" id="ued-zone" class="form-input">
+          </div>
+          <div class="form-group" id="ued-vehicle-group">
+            <label class="form-label">On-Duty Vehicle (for live tracking)</label>
+            <select id="ued-vehicle" class="form-select"></select>
+            <p class="form-hint">The vehicle this supervisor moves with on the field. It is used to label the live position on the GPS map.</p>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Passport Photograph</label>
+            <div class="photo-upload-row">
+              <span class="photo-preview" id="ued-photo-preview">No photo uploaded yet</span>
+              <div class="photo-upload-actions">
+                <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('ued-photo-file').click()">&#128247; Upload Photo</button>
+                <button type="button" class="btn btn-sm btn-outline" onclick="openPhotoEditorForInput('ued-photo-file', 'ued-photo-preview')">&#9999;&#65039; Zoom / Edit</button>
+                <button type="button" class="btn btn-sm btn-danger" onclick="clearUserEditPhoto()">&#10005; Remove</button>
+              </div>
+            </div>
+            <input type="file" id="ued-photo-file" class="photo-file-hidden" accept="image/*" onchange="readPhotoFile(this, 'ued-photo-preview')">
+          </div>
+
+          <div class="form-section-title">Set A New Password</div>
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label class="form-label">New Password (leave blank to keep the current one)</label>
+              <div class="password-field">
+                <input type="password" id="ued-password" class="form-input" placeholder="Minimum 6 characters" oninput="checkPasswordPairMatch('ued-password', 'ued-password2', 'ued-password-mismatch-hint')">
+                <button type="button" class="password-peek"
+                    onclick="togglePasswordPeek('ued-password', this)"
+                    onmousedown="startPasswordPeek('ued-password', this)"
+                    onmouseup="stopPasswordPeek('ued-password', this)"
+                    onmouseleave="stopPasswordPeek('ued-password', this)"
+                    ontouchstart="startPasswordPeek('ued-password', this)"
+                    ontouchend="stopPasswordPeek('ued-password', this)"
+                    ontouchcancel="stopPasswordPeek('ued-password', this)"
+                    title="Show / hide password">&#128065;</button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Confirm Password</label>
+              <div class="password-field">
+                <input type="password" id="ued-password2" class="form-input" placeholder="Repeat the password" oninput="checkPasswordPairMatch('ued-password', 'ued-password2', 'ued-password-mismatch-hint')">
+                <button type="button" class="password-peek"
+                    onclick="togglePasswordPeek('ued-password2', this)"
+                    onmousedown="startPasswordPeek('ued-password2', this)"
+                    onmouseup="stopPasswordPeek('ued-password2', this)"
+                    onmouseleave="stopPasswordPeek('ued-password2', this)"
+                    ontouchstart="startPasswordPeek('ued-password2', this)"
+                    ontouchend="stopPasswordPeek('ued-password2', this)"
+                    ontouchcancel="stopPasswordPeek('ued-password2', this)"
+                    title="Show / hide password">&#128065;</button>
+              </div>
+              <div id="ued-password-mismatch-hint" class="password-mismatch-hint" style="display:none;color:#DC2626;font-size:11.5px;font-weight:700;margin-top:4px;">Password doesn't match</div>
+            </div>
+          </div>
+          <label class="settings-check">
+            <input type="checkbox" id="ued-force-change">
+            <span>Require this person to change the password at next sign in</span>
+          </label>
+
+          <div class="modal-inline-actions">
+            <button type="button" class="btn btn-outline" onclick="closeModal('modal-user-edit')">Cancel</button>
+            <button type="submit" class="btn btn-primary">&#128190; Save Changes</button>
+            <button type="button" class="btn btn-danger" id="ued-delete-btn" onclick="deleteUserFromEdit()">&#128465;&#65039; Delete Account</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- DOCUMENT PREVIEW & PRINT SETTINGS -->
+  <div class="modal-backdrop" id="modal-doc-preview">
+    <div class="modal-card modal-lg">
+      <div class="modal-header">
+        <div class="doc-preview-header-left">
+          <h3 class="modal-title" id="doc-preview-title">&#128196; Preview</h3>
+          <button type="button" class="btn btn-sm btn-outline doc-settings-toggle-btn" id="doc-settings-toggle-btn" onclick="toggleDocPreviewSettings()" title="Collapse or expand Font Settings for Full-Screen Preview">
+            &#9652; Collapse Settings (Full Screen)
+          </button>
+        </div>
+        <button class="modal-close-btn" onclick="closeModal('modal-doc-preview')">&#10005;</button>
+      </div>
+      <div class="modal-body doc-preview-body">
+        <div class="doc-preview-settings-pane" id="doc-preview-settings-pane">
+          <div class="doc-preview-controls">
+            <div class="doc-control">
+              <label class="form-label">Font Size</label>
+              <div class="font-stepper">
+                <button type="button" class="font-step-btn" onclick="stepDocFont(-0.5)">&minus;</button>
+                <span class="font-step-value" id="doc-font-value">10.5 pt</span>
+                <button type="button" class="font-step-btn" onclick="stepDocFont(0.5)">+</button>
+                <input type="range" id="doc-font-range" class="font-range" min="6" max="14" step="0.5" value="10.5" oninput="setDocFont(this.value)">
+              </div>
+            </div>
+            <div class="doc-control">
+              <label class="form-label">Margins</label>
+              <select id="doc-margin-select" class="form-select" onchange="setDocMargins(this.value)">
+                <option value="standard">Standard (roomy)</option>
+                <option value="tight" selected>Tight (fit more per page)</option>
+                <option value="minimal">Minimal (0.1 in)</option>
+              </select>
+            </div>
+            <div class="doc-control">
+              <label class="form-label">Printer &amp; Copies</label>
+              <div style="display:flex;gap:6px;align-items:center;">
+                <select id="doc-printer-select" class="form-select" style="min-width:150px;" title="Select destination printer">
+                  <option value="">System Default Printer / Save as PDF</option>
+                </select>
+                <input type="number" id="doc-print-copies" class="form-input" value="1" min="1" max="50" style="width:64px;" title="Number of copies">
+              </div>
+            </div>
+            <div class="doc-control doc-control-check">
+              <label class="settings-check">
+                <input type="checkbox" id="doc-autofit" checked onchange="setDocAutoFit(this.checked)">
+                <span>Auto-fit: shrink slightly and re-measure so the signature never lands alone on a page</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="doc-preview-warning" id="doc-preview-warning" style="display:none;"></div>
+        </div>
+
+        <div class="doc-preview-frame-wrap" id="doc-preview-frame-wrap">
+          <iframe id="doc-preview-frame" class="doc-preview-frame" title="Document preview"></iframe>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal('modal-doc-preview')">Close</button>
+        <button class="btn btn-outline desktop-print-only" onclick="openDocPreviewInTab()">&#128279; Open In New Tab</button>
+        <button class="btn btn-outline desktop-print-only" onclick="printFromDocPreview()">&#128424; Print</button>
+        <button class="btn btn-primary" onclick="saveFromDocPreview()">&#128190; Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- HOW THIS MAP WORKS -->
+  <div class="modal-backdrop" id="modal-map-help">
+    <div class="modal-card modal-lg">
+      <div class="modal-header">
+        <h3 class="modal-title">&#10067; How This Map Works</h3>
+        <button class="modal-close-btn" onclick="closeModal('modal-map-help')">&#10005;</button>
+      </div>
+      <div class="modal-body">
+        <div class="map-help-grid">
+          <div class="map-help-item">
+            <strong>&#128506;&#65039; Fully offline</strong>
+            <span>Every unit coordinate travels inside the app, so the map draws with no internet at all.</span>
+          </div>
+          <div class="map-help-item">
+            <strong>&#128311; Unit health</strong>
+            <span>Green is optimal, amber is due soon, and <strong>red blinks</strong> once a commercial, medical,
+              institutional or municipal unit passes <strong>2 weeks</strong>, or an industrial unit passes
+              <strong>1 month</strong>, without evacuation.</span>
+          </div>
+          <div class="map-help-item">
+            <strong>&#128666; Supervisors and vehicles</strong>
+            <span>A supervisor moves with the vehicle, so their phone's positions are the vehicle's route. Each
+              appears as a human icon labelled with the supervisor's name, with a dashed trail, orange squares
+              where it stopped and a pulsing ring while it is moving.</span>
+          </div>
+          <div class="map-help-item">
+            <strong>&#127919; Locate someone</strong>
+            <span>Press <em>Show On Map</em> on a supervisor's row and the map flies to them with a target ring,
+              so you know exactly which icon you are looking at.</span>
+          </div>
+          <div class="map-help-item">
+            <strong>&#128506; Moving around</strong>
+            <span>Drag the map to pan, scroll or pinch to zoom, double-click to zoom in on a point, and use the
+              round reset button to fit the whole concession again.</span>
+          </div>
+          <div class="map-help-item">
+            <strong>&#128225; Reporting</strong>
+            <span>A supervisor phone reports automatically at launch and every 3 minutes while the app is open,
+              signed in and online. <em>Start Tracking On This Device</em> streams continuously instead.
+              Positions are reported automatically by each supervisor's phone while they are signed in and online.</span>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal('modal-map-help')">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MY PROFILE -->
+  <div class="modal-backdrop" id="modal-profile">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title">&#128100; My Profile</h3>
+        <button class="modal-close-btn" onclick="closeModal('modal-profile')">&#10005;</button>
+      </div>
+      <div class="modal-body">
+        <div class="profile-head">
+          <div class="profile-photo-lg" id="profile-photo-view">MA</div>
+          <div>
+            <strong style="font-size:16px;" id="profile-name-view">User</strong>
+            <div style="font-size:12.5px;color:var(--text-muted);" id="profile-role-view">Role</div>
+            <div style="font-size:12px;color:var(--text-muted);" id="profile-username-view">@username</div>
+          </div>
+        </div>
+
+        <div class="form-section-title">Edit My Details</div>
+        <form onsubmit="saveProfile(event)" class="settings-form">
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label class="form-label">First Name</label>
+              <input type="text" id="prof-first" class="form-input" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Surname</label>
+              <input type="text" id="prof-last" class="form-input" required>
+            </div>
+          </div>
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label class="form-label">Phone</label>
+              <input type="text" id="prof-phone" class="form-input">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Email</label>
+              <input type="text" id="prof-email" class="form-input">
+            </div>
+          </div>
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label class="form-label">Username</label>
+              <input type="text" id="prof-username" class="form-input" required placeholder="Username">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Assigned Zone / Scope</label>
+              <input type="text" id="prof-zone" class="form-input">
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Passport Photograph</label>
+            <div class="photo-upload-row">
+              <span class="photo-preview" id="prof-photo-preview">No new photo selected</span>
+              <div class="photo-upload-actions">
+                <button type="button" class="btn btn-sm btn-outline" onclick="document.getElementById('prof-photo-file').click()">&#128247; Upload Photo</button>
+                <button type="button" class="btn btn-sm btn-outline" onclick="openPhotoEditorForInput('prof-photo-file', 'prof-photo-preview')">&#9999;&#65039; Zoom / Edit</button>
+                <button type="button" class="btn btn-sm btn-danger" onclick="clearProfilePhoto()">&#10005; Remove</button>
+              </div>
+            </div>
+            <input type="file" id="prof-photo-file" class="photo-file-hidden" accept="image/*" onchange="readPhotoFile(this, 'prof-photo-preview')">
+            <p class="form-hint">JPG or PNG. Drag, scroll, or pinch to zoom and crop your picture before saving.</p>
+          </div>
+          <button type="submit" class="btn btn-primary">Save My Profile</button>
+        </form>
+
+        <div class="form-section-title">Change My Password</div>
+        <form onsubmit="changeOwnPassword(event)" class="settings-form">
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label class="form-label">Current Password (Optional)</label>
+              <div class="password-field">
+                <input type="password" id="pwd-current" class="form-input" placeholder="Leave blank or enter current">
+                <button type="button" class="password-peek"
+                    onclick="togglePasswordPeek('pwd-current', this)"
+                    onmousedown="startPasswordPeek('pwd-current', this)"
+                    onmouseup="stopPasswordPeek('pwd-current', this)"
+                    onmouseleave="stopPasswordPeek('pwd-current', this)"
+                    ontouchstart="startPasswordPeek('pwd-current', this)"
+                    ontouchend="stopPasswordPeek('pwd-current', this)"
+                    ontouchcancel="stopPasswordPeek('pwd-current', this)"
+                    title="Show / hide password">&#128065;</button>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">New Password</label>
+              <div class="password-field">
+                <input type="password" id="pwd-new" class="form-input" required placeholder="Minimum 6 characters" oninput="checkPasswordPairMatch('pwd-new', 'pwd-confirm', 'pwd-confirm-mismatch-hint')">
+                <button type="button" class="password-peek"
+                    onclick="togglePasswordPeek('pwd-new', this)"
+                    onmousedown="startPasswordPeek('pwd-new', this)"
+                    onmouseup="stopPasswordPeek('pwd-new', this)"
+                    onmouseleave="stopPasswordPeek('pwd-new', this)"
+                    ontouchstart="startPasswordPeek('pwd-new', this)"
+                    ontouchend="stopPasswordPeek('pwd-new', this)"
+                    ontouchcancel="stopPasswordPeek('pwd-new', this)"
+                    title="Show / hide password">&#128065;</button>
+              </div>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Confirm New Password</label>
+            <div class="password-field">
+              <input type="password" id="pwd-confirm" class="form-input" required placeholder="Repeat new password" oninput="checkPasswordPairMatch('pwd-new', 'pwd-confirm', 'pwd-confirm-mismatch-hint')">
+              <button type="button" class="password-peek"
+                    onclick="togglePasswordPeek('pwd-confirm', this)"
+                    onmousedown="startPasswordPeek('pwd-confirm', this)"
+                    onmouseup="stopPasswordPeek('pwd-confirm', this)"
+                    onmouseleave="stopPasswordPeek('pwd-confirm', this)"
+                    ontouchstart="startPasswordPeek('pwd-confirm', this)"
+                    ontouchend="stopPasswordPeek('pwd-confirm', this)"
+                    ontouchcancel="stopPasswordPeek('pwd-confirm', this)"
+                    title="Show / hide password">&#128065;</button>
+            </div>
+            <div id="pwd-confirm-mismatch-hint" class="password-mismatch-hint" style="display:none;color:#DC2626;font-size:11.5px;font-weight:700;margin-top:4px;">Password doesn't match</div>
+          </div>
+          <button type="submit" class="btn btn-secondary">Update My Password &amp; Profile</button>
+        </form>
+
+      </div>
+      <div class="modal-footer profile-footer">
+        <button class="btn btn-outline" onclick="signOut()">&#128682; Sign Out / Switch User</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- RESET USER PASSWORD -->
+  <div class="modal-backdrop" id="modal-reset-password">
+    <div class="modal-card" style="max-width:520px;">
+      <div class="modal-header">
+        <h3 class="modal-title">&#128273; Reset User Password</h3>
+        <button class="modal-close-btn" onclick="closeModal('modal-reset-password')">&#10005;</button>
+      </div>
+      <form onsubmit="applyPasswordReset(event)">
+        <div class="modal-body">
+          <input type="hidden" id="reset-user-id">
+          <div style="background:#F8FAFC;border:1px solid #E2E8F0;border-radius:10px;padding:12px;">
+            <strong id="reset-user-name">User</strong>
+            <div style="font-size:12px;color:var(--text-muted);" id="reset-user-meta"></div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">New Password</label>
+            <div class="password-field">
+              <input type="password" id="reset-new-password" class="form-input" placeholder="Minimum 6 characters" required>
+              <button type="button" class="password-peek"
+                  onclick="togglePasswordPeek('reset-new-password', this)"
+                  onmousedown="startPasswordPeek('reset-new-password', this)"
+                  onmouseup="stopPasswordPeek('reset-new-password', this)"
+                  onmouseleave="stopPasswordPeek('reset-new-password', this)"
+                  ontouchstart="startPasswordPeek('reset-new-password', this)"
+                  ontouchend="stopPasswordPeek('reset-new-password', this)"
+                  ontouchcancel="stopPasswordPeek('reset-new-password', this)"
+                  title="Show / hide password">&#128065;</button>
+            </div>
+          </div>
+          <p class="form-hint">Passwords are shown in clear here so they can be read out to the user you are creating.</p>
+          <label class="settings-check">
+            <input type="checkbox" id="reset-force-change" checked>
+            <span>Require this user to change the password at next sign in</span>
+          </label>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-reset-password')">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save New Password</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+
+
+  <!-- FACILITY REPORT -->
+  <div class="modal-backdrop" id="modal-facility-report">
+    <div class="modal-card modal-lg">
+      <div class="modal-header">
+        <h3 class="modal-title">Facility Evacuation &amp; Service Audit Report</h3>
+        <div style="display:flex;align-items:center;gap:10px;" onmousedown="event.stopPropagation()" ontouchstart="event.stopPropagation()">
+          <label for="report-month-filter" style="font-size:11.5px;font-weight:800;color:var(--text-muted);">SELECT MONTH:</label>
+          <select id="report-month-filter" class="form-select" style="width:190px;cursor:pointer;" onchange="onReportMonthChanged()" onmousedown="event.stopPropagation()" onclick="event.stopPropagation()">
+            <option value="all">All Months (2026)</option>
+            <option value="2026-10">October 2026</option>
+            <option value="2026-09">September 2026</option>
+            <option value="2026-08">August 2026</option>
+            <option value="2026-07">July 2026</option>
+            <option value="2026-06">June 2026</option>
+            <option value="2026-05">May 2026</option>
+            <option value="2026-04">April 2026</option>
+            <option value="2026-03">March 2026</option>
+            <option value="2026-02">February 2026</option>
+            <option value="2026-01">January 2026</option>
+          </select>
+        </div>
+        <button class="modal-close-btn" onclick="closeModal('modal-facility-report')">&#10005;</button>
+      </div>
+      <div class="modal-body" id="report-modal-content"></div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal('modal-facility-report')">Close</button>
+        <button class="btn btn-outline" onclick="openPreviewForFacility()">&#128269; Preview</button>
+        <button class="btn btn-outline desktop-print-only" onclick="printFacilityReport()">&#128424; Print</button>
+        <button class="btn btn-primary" onclick="exportFacilityReport()">&#128190; Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- STREET REPORT -->
+  <div class="modal-backdrop" id="modal-street-report">
+    <div class="modal-card modal-lg">
+      <div class="modal-header">
+        <h3 class="modal-title">Municipal Street Evacuation Report</h3>
+        <div style="display:flex;align-items:center;gap:10px;" onmousedown="event.stopPropagation()" ontouchstart="event.stopPropagation()">
+          <label for="street-report-month-filter" style="font-size:11.5px;font-weight:800;color:var(--text-muted);">SELECT MONTH:</label>
+          <select id="street-report-month-filter" class="form-select" style="width:190px;cursor:pointer;" onchange="onStreetReportMonthChanged()" onmousedown="event.stopPropagation()" onclick="event.stopPropagation()">
+            <option value="all">All Months (2026)</option>
+            <option value="2026-10">October 2026</option>
+            <option value="2026-09">September 2026</option>
+            <option value="2026-08">August 2026</option>
+            <option value="2026-07">July 2026</option>
+            <option value="2026-06">June 2026</option>
+            <option value="2026-05">May 2026</option>
+            <option value="2026-04">April 2026</option>
+            <option value="2026-03">March 2026</option>
+            <option value="2026-02">February 2026</option>
+            <option value="2026-01">January 2026</option>
+          </select>
+        </div>
+        <button class="modal-close-btn" onclick="closeModal('modal-street-report')">&#10005;</button>
+      </div>
+      <div class="modal-body" id="street-report-modal-content"></div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal('modal-street-report')">Close</button>
+        <button class="btn btn-outline" onclick="openPreviewForStreet()">&#128269; Preview</button>
+        <button class="btn btn-outline desktop-print-only" onclick="printStreetReport()">&#128424; Print</button>
+        <button class="btn btn-primary" onclick="exportStreetReport()">&#128190; Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- EVACUATE MUNICIPAL STREET -->
+  <div class="modal-backdrop" id="modal-evacuate-street">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title">&#128667; Log Municipal Evacuation</h3>
+        <button class="modal-close-btn" onclick="closeModal('modal-evacuate-street')">&#10005;</button>
+      </div>
+      <form onsubmit="saveEvacuateStreet(event)">
+        <div class="modal-body">
+          <input type="hidden" id="evac-street-id">
+          <div style="background:#FFF0E5;border:1px solid rgba(255,106,19,0.35);border-radius:12px;padding:14px;">
+            <strong id="evac-street-title" style="font-size:16px;">Street</strong>
+            <div style="font-size:12px;color:var(--text-muted);margin-top:4px;" id="evac-street-location"></div>
+            <div style="font-size:12px;margin-top:4px;">Supervisor in charge: <strong id="evac-street-supervisor" style="color:var(--eco-green);"></strong></div>
+          </div>
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label class="form-label">Evacuation Date</label>
+              <input type="date" id="evac-street-date" class="form-input" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Vehicle Used</label>
+              <select id="evac-street-truck" class="form-select"></select>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-evacuate-street')">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Evacuation Record</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- FACILITY EVACUATION PROMPT (YES / NO) -->
+  <div class="modal-backdrop" id="modal-facility-evacuate-prompt">
+    <div class="modal-card" style="max-width:580px;">
+      <div class="modal-header">
+        <h3 class="modal-title">&#128667; Evacuation Confirmation</h3>
+        <button class="modal-close-btn" onclick="closeModal('modal-facility-evacuate-prompt')">&#10005;</button>
+      </div>
+      <div class="modal-body">
+        <div style="background:#FFF0E5;border:1px solid rgba(255,106,19,0.35);border-radius:12px;padding:16px;">
+          <h4 id="prompt-fac-title" style="font-size:16px;font-weight:800;line-height:1.35;">Has this facility been evacuated today?</h4>
+          <p id="prompt-fac-meta" style="font-size:12.5px;color:var(--text-muted);margin-top:6px;"></p>
+        </div>
+        <div class="form-grid-2">
+          <div class="form-group">
+            <label class="form-label" for="prompt-fac-date">Evacuation Date</label>
+            <input type="date" id="prompt-fac-date" class="form-input" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Vehicle Used</label>
+            <select id="prompt-fac-truck" class="form-select"></select>
+          </div>
+        </div>
+        <div style="padding:12px;background:#F0FDF4;border:1px solid #86EFAC;border-radius:10px;font-size:12.5px;color:#14532D;line-height:1.6;">
+          <strong>Select YES</strong> to stamp the chosen evacuation date onto the evacuation schedule, append the record to the facility report and refresh the compliance audit automatically.<br>
+          <strong>Select NO</strong> to leave every detail exactly at the last updated value.
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="confirmEvacuateFacility(false)">&#10005; No - Keep Last Record</button>
+        <button type="button" class="btn btn-primary" onclick="confirmEvacuateFacility(true)">&#10003; Yes - Evacuated Today</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- EDIT FACILITY -->
+  <div class="modal-backdrop" id="modal-edit-facility">
+    <div class="modal-card modal-lg">
+      <div class="modal-header">
+        <h3 class="modal-title">Edit Facility Details</h3>
+        <button class="modal-close-btn" onclick="closeModal('modal-edit-facility')">&#10005;</button>
+      </div>
+      <form onsubmit="saveEditFacility(event)">
+        <div class="modal-body">
+          <input type="hidden" id="edit-fac-id">
+
+          <div class="form-section-title">Facility Profile</div>
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label class="form-label">Facility Name</label>
+              <input type="text" id="edit-fac-name" class="form-input" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Category</label>
+              <select id="edit-fac-category" class="form-select" required>
+                <option value="Commercial">Commercial</option>
+                <option value="Industrial">Industrial</option>
+                <option value="Medical">Medical</option>
+                <option value="Institutional">Institutional</option>
+                <option value="Agricultural Waste">Agricultural Waste</option>
+                <option value="Construction Waste">Construction Waste</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group" style="display:none;">
+            <label class="form-label">Location / Address</label>
+            <input type="text" id="edit-fac-location" class="form-input">
+          </div>
+
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label class="form-label">Assigned Field Supervisor</label>
+              <select id="edit-fac-supervisor" class="form-select" required></select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Last Evacuation Date</label>
+              <input type="date" id="edit-fac-lastevac" class="form-input">
+            </div>
+          </div>
+
+          <div class="form-group" style="background:#ECFDF5;border:1px solid #A7F3D0;border-radius:10px;padding:10px 12px;margin-top:4px;">
+            <label class="form-label" style="color:#0F5328;font-weight:800;">Select Evacuation Period</label>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+              <select id="edit-fac-evac-record-select" class="form-select" style="flex:1;min-width:180px;" onchange="onEditFacEvacRecordChange(this.value)"></select>
+              <button type="button" class="btn btn-sm btn-danger" id="btn-delete-selected-fac-evacuation" onclick="deleteSelectedFacEvacuationFromEditModal()" style="white-space:nowrap;">&#128465;&#65039; Delete Evacuation</button>
+            </div>
+          </div>
+
+          <div class="form-section-title">Billing &amp; Tariff</div>
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label class="form-label">Monthly Tariff (&#8358;)</label>
+              <input type="number" id="edit-fac-amount" class="form-input" required oninput="updateFacilityTariffTotalPreview('edit')">
+            </div>
+            <div class="form-group">
+              <label class="form-label">VAT Rate (%)</label>
+              <input type="number" step="0.1" id="edit-fac-vat" class="form-input" oninput="updateFacilityTariffTotalPreview('edit')">
+            </div>
+          </div>
+          <div id="edit-fac-total-with-vat-box" class="tariff-vat-total-banner" style="background:#ECFDF5;border:1px solid #86EFAC;border-radius:10px;padding:10px 14px;margin-top:2px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+            <span style="font-size:12.5px;font-weight:700;color:#0F5328;" id="edit-fac-total-with-vat-label">Monthly Total (when Tax/VAT is added to Monthly Tariff):</span>
+            <strong id="edit-fac-total-with-vat-val" style="font-size:15px;font-weight:900;color:#0F5328;">&#8358;0</strong>
+          </div>
+
+          <div class="form-section-title">Payment Record Details</div>
+          <div class="payment-history-note" id="edit-fac-history-note"></div>
+
+          <div class="form-group" style="background:#ECFDF5;border:1px solid #A7F3D0;border-radius:10px;padding:10px 12px;">
+            <label class="form-label" style="color:#0F5328;font-weight:800;">Select Payment Record</label>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+              <select id="edit-fac-pay-record-select" class="form-select" style="flex:1;min-width:180px;" onchange="onEditFacPaymentRecordChange(this.value)"></select>
+              <button type="button" class="btn btn-sm btn-danger" id="btn-delete-selected-fac-payment" onclick="deleteSelectedFacPaymentFromEditModal()" style="white-space:nowrap;">&#128465;&#65039; Delete Record</button>
+            </div>
+          </div>
+
+          <div id="edit-fac-payment-fields-wrap">
+            <div class="form-grid-2">
+              <div class="form-group">
+                <label class="form-label">Payment / Depositor Name</label>
+                <input type="text" id="edit-fac-payer-name" class="form-input">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Amount Paid (&#8358;)</label>
+                <input type="number" id="edit-fac-pay-amount" class="form-input">
+              </div>
+            </div>
+
+            <div class="form-grid-2">
+              <div class="form-group">
+                <label class="form-label">Date of Payment</label>
+                <input type="date" id="edit-fac-pay-date" class="form-input">
+              </div>
+              <div class="form-group">
+                <label class="form-label">Payment Month</label>
+                <input type="text" id="edit-fac-pay-month" class="form-input" list="pay-month-suggestions" placeholder="Month paid for">
+              </div>
+            </div>
+
+            <div class="form-grid-2">
+              <div class="form-group">
+                <label class="form-label">Coverage Period From</label>
+                <select id="edit-fac-period-from" class="form-select"></select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Coverage Period To</label>
+                <select id="edit-fac-period-to" class="form-select"></select>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-edit-facility')">Cancel</button>
+          <button type="submit" class="btn btn-primary" id="btn-submit-edit-facility">Save Facility</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ADD FACILITY -->
+  <!-- CONFIRM DELETE (administrator, from the facility row) -->
+  <div class="modal-backdrop" id="modal-confirm-delete">
+    <div class="modal-card" style="max-width:460px;">
+      <div class="modal-body" style="text-align:center;padding:26px 24px 20px;">
+        <div style="width:52px;height:52px;margin:0 auto 14px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:24px;border:2px solid #FCA5A5;background:#FEE2E2;color:#B91C1C;">&#128465;&#65039;</div>
+        <h3 style="font-size:17px;font-weight:800;color:var(--text-main);margin-bottom:6px;">Delete this facility?</h3>
+        <p id="confirm-delete-name" style="font-size:13.5px;font-weight:800;color:#B91C1C;margin-bottom:8px;"></p>
+        <p id="confirm-delete-message" style="font-size:12.5px;line-height:1.55;color:var(--text-muted);margin-bottom:20px;"></p>
+        <div style="display:flex;gap:10px;">
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-confirm-delete')" style="flex:1;padding:11px;font-size:13.5px;">Cancel</button>
+          <button type="button" class="btn btn-primary" onclick="confirmDeleteFacility()" style="flex:1;padding:11px;font-size:13.5px;background:#B91C1C!important;border-color:#B91C1C!important;color:#FFFFFF!important;">Delete</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- POPUP NOTICE (duplicate facility, blocking messages) -->
+  <div class="modal-backdrop" id="modal-notice">
+    <div class="modal-card" style="max-width:440px;">
+      <div class="modal-body" style="text-align:center;padding:26px 24px 20px;">
+        <div id="notice-icon" style="width:52px;height:52px;margin:0 auto 14px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:24px;border:2px solid #7DD3FC;background:#E0F2FE;color:#0369A1;">&#8505;&#65039;</div>
+        <h3 id="notice-title" style="font-size:17px;font-weight:800;color:var(--text-main);margin-bottom:8px;">Notice</h3>
+        <p id="notice-message" style="font-size:13px;line-height:1.55;color:var(--text-muted);margin-bottom:20px;"></p>
+        <button type="button" class="btn btn-primary" id="notice-ok-btn" onclick="closeModalAlert()" style="width:100%;padding:11px;font-size:13.5px;">OK</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" id="modal-add-facility">
+    <div class="modal-card modal-lg">
+      <div class="modal-header">
+        <h3 class="modal-title">+ Register New Facility Client</h3>
+        <button class="modal-close-btn" onclick="closeModal('modal-add-facility')">&#10005;</button>
+      </div>
+      <form id="form-add-facility" onsubmit="saveAddFacility(event)">
+        <div class="modal-body">
+          <div class="form-section-title">Facility Profile</div>
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label class="form-label">Facility Name</label>
+              <input type="text" id="add-fac-name" class="form-input" placeholder="Facility name" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Category</label>
+              <select id="add-fac-category" class="form-select" required>
+                <option value="Commercial">Commercial</option>
+                <option value="Industrial">Industrial</option>
+                <option value="Medical">Medical</option>
+                <option value="Institutional">Institutional</option>
+                <option value="Agricultural Waste">Agricultural Waste</option>
+                <option value="Construction Waste">Construction Waste</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-group" style="display:none;">
+            <label class="form-label">Location / Address</label>
+            <input type="text" id="add-fac-location" class="form-input" placeholder="Abeokuta">
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Assigned Field Supervisor</label>
+            <select id="add-fac-supervisor" class="form-select" required></select>
+          </div>
+
+          <div class="form-section-title">Billing &amp; Tariff</div>
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label class="form-label">Monthly Tariff (&#8358;)</label>
+              <input type="number" id="add-fac-amount" class="form-input" placeholder="Monthly amount in naira" required oninput="updateFacilityTariffTotalPreview('add')">
+            </div>
+            <div class="form-group">
+              <label class="form-label">VAT Rate (%)</label>
+              <input type="number" step="0.1" id="add-fac-vat" class="form-input" value="7.5" oninput="updateFacilityTariffTotalPreview('add')">
+            </div>
+          </div>
+          <div id="add-fac-total-with-vat-box" class="tariff-vat-total-banner" style="background:#ECFDF5;border:1px solid #86EFAC;border-radius:10px;padding:10px 14px;margin-top:2px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+            <span style="font-size:12.5px;font-weight:700;color:#0F5328;" id="add-fac-total-with-vat-label">Monthly Total (when Tax/VAT is added to Monthly Tariff):</span>
+            <strong id="add-fac-total-with-vat-val" style="font-size:15px;font-weight:900;color:#0F5328;">&#8358;0</strong>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-add-facility')">Cancel</button>
+          <button type="submit" class="btn btn-primary">Register Facility</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- EDIT STREET -->
+  <div class="modal-backdrop" id="modal-edit-street">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title">Edit Municipal Street</h3>
+        <button class="modal-close-btn" onclick="closeModal('modal-edit-street')">&#10005;</button>
+      </div>
+      <form onsubmit="saveEditStreet(event)">
+        <div class="modal-body">
+          <input type="hidden" id="edit-street-id">
+          <div class="form-group">
+            <label class="form-label">Street Name</label>
+            <input type="text" id="edit-street-name" class="form-input" required>
+          </div>
+          <div class="form-group" style="display:none;">
+            <label class="form-label">Zone / Address</label>
+            <input type="text" id="edit-street-location" class="form-input">
+          </div>
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label class="form-label">Assigned Field Supervisor</label>
+              <select id="edit-street-supervisor" class="form-select" required></select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Date of Last Evacuation</label>
+              <input type="date" id="edit-street-lastevac" class="form-input">
+            </div>
+          </div>
+          <div class="form-group" style="background:#ECFDF5;border:1px solid #A7F3D0;border-radius:10px;padding:10px 12px;margin-top:4px;">
+            <label class="form-label" style="color:#0F5328;font-weight:800;">Select Evacuation Period</label>
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+              <select id="edit-street-evac-record-select" class="form-select" style="flex:1;min-width:180px;" onchange="onEditStreetEvacRecordChange(this.value)"></select>
+              <button type="button" class="btn btn-sm btn-danger" id="btn-delete-selected-street-evacuation" onclick="deleteSelectedStreetEvacuationFromEditModal()" style="white-space:nowrap;">&#128465;&#65039; Delete Evacuation</button>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-edit-street')">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ADD STREET -->
+  <div class="modal-backdrop" id="modal-add-street">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title">+ Add Municipal Street</h3>
+        <button class="modal-close-btn" onclick="closeModal('modal-add-street')">&#10005;</button>
+      </div>
+      <form id="form-add-street" onsubmit="saveAddStreet(event)">
+        <div class="modal-body">
+          <div class="form-group">
+            <label class="form-label">Street Name</label>
+            <input type="text" id="add-street-name" class="form-input" placeholder="Street name" required>
+          </div>
+          <div class="form-group" style="display:none;">
+            <label class="form-label">Zone / Address</label>
+            <input type="text" id="add-street-location" class="form-input" placeholder="Abeokuta">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Assigned Field Supervisor</label>
+            <select id="add-street-supervisor" class="form-select" required></select>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-add-street')">Cancel</button>
+          <button type="submit" class="btn btn-primary">Add Street</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- LOG PAYMENT -->
+  <div class="modal-backdrop" id="modal-log-payment">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title">&#128179; Record or Edit Service Payment</h3>
+        <button class="modal-close-btn" onclick="closeModal('modal-log-payment')">&#10005;</button>
+      </div>
+      <form onsubmit="saveLogPayment(event)">
+        <div class="modal-body">
+          <input type="hidden" id="pay-fac-id">
+          <div style="background:#F0FDF4;border:1px solid #86EFAC;border-radius:10px;padding:12px;">
+            <strong style="font-size:14px;" id="pay-fac-title">Facility</strong>
+            <div style="font-size:12px;color:#14532D;margin-top:2px;" id="pay-fac-subtitle">Select whether to add a new payment record or edit an existing payment record.</div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Action Mode (Add New or Edit Existing Payment)</label>
+            <select id="pay-record-mode-select" class="form-select" onchange="onLogPaymentModeChange(this.value)"></select>
+          </div>
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label class="form-label">Payment / Depositor Name</label>
+              <input type="text" id="pay-payer" class="form-input" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Amount Paid (&#8358;)</label>
+              <input type="number" id="pay-amount" class="form-input" required>
+            </div>
+          </div>
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label class="form-label">Date of Payment</label>
+              <input type="date" id="pay-date" class="form-input" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Payment Month</label>
+              <input type="text" id="pay-month" class="form-input" list="pay-month-suggestions" placeholder="Month paid for">
+            </div>
+          </div>
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label class="form-label">Coverage Period From</label>
+              <select id="pay-period-from" class="form-select"></select>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Coverage Period To</label>
+              <select id="pay-period-to" class="form-select"></select>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-log-payment')">Cancel</button>
+          <button type="submit" class="btn btn-primary">Save Payment Record</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- ADD PAYMENT ENTRY TO REQUEST SCHEDULE -->
+  <div class="modal-backdrop" id="modal-add-schedule-payment">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title">+ Add Payment Entry To Request Schedule</h3>
+        <button class="modal-close-btn" onclick="closeModal('modal-add-schedule-payment')">&#10005;</button>
+      </div>
+      <form id="form-add-payment-schedule" onsubmit="addCustomPaymentToSchedule(event)">
+        <div class="modal-body">
+          <div class="form-group" id="sch-outlet-group">
+            <label class="form-label">Outlet / Facility</label>
+            <select id="sch-outlet" class="form-select" onchange="onScheduleOutletChanged()" required></select>
+          </div>
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label class="form-label">Depositors Name</label>
+              <input type="text" id="sch-depositor" class="form-input" placeholder="Name of the payer" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Amount Paid (&#8358;)</label>
+              <input type="number" id="sch-amount" class="form-input" placeholder="Amount paid in naira" required>
+            </div>
+          </div>
+          <div class="form-group" id="sch-general-waste-group" style="display:none;">
+            <label class="form-label">Gen. Waste (&#8358;)</label>
+            <input type="number" id="sch-general-waste" class="form-input" placeholder="General waste amount in naira">
+          </div>
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label class="form-label">Date of Payment</label>
+              <input type="date" id="sch-date" class="form-input" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Month</label>
+              <input type="text" id="sch-month" class="form-input" list="pay-month-suggestions" placeholder="Month paid for" required>
+            </div>
+          </div>
+          <label class="settings-check" style="background:var(--primary-light);border-radius:10px;padding:12px;">
+            <input type="checkbox" id="sch-is-re">
+            <span>This is a re-requested payment - print <strong>(RE-Request)</strong> beside the outlet name.</span>
+          </label>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-add-schedule-payment')">Cancel</button>
+          <button type="submit" class="btn btn-primary">Add Entry To Schedule</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- EDIT PAYMENT SCHEDULE ENTRY -->
+  <div class="modal-backdrop" id="modal-edit-schedule-payment">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3 class="modal-title">&#9999;&#65039; Edit Payment Entry</h3>
+        <button class="modal-close-btn" onclick="closeModal('modal-edit-schedule-payment')">&#10005;</button>
+      </div>
+      <form onsubmit="saveEditSchedulePayment(event)">
+        <div class="modal-body">
+          <div class="sch-edit-head">
+            <div>
+              <strong id="sch-edit-title">Entry</strong>
+              <div class="sch-edit-sub" id="sch-edit-sub">Correct anything that was captured wrongly, then save.</div>
+            </div>
+            <span class="badge badge-category" id="sch-edit-badge">Commercial</span>
+          </div>
+          <input type="hidden" id="sch-id">
+          <div class="form-group" id="sed-outlet-group">
+            <label class="form-label">Outlet / Facility</label>
+            <select id="sed-outlet" class="form-select" onchange="syncEditGeneralWasteVisibility()" required></select>
+          </div>
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label class="form-label">Depositors Name</label>
+              <input type="text" id="sed-depositor" class="form-input" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Amount Paid (&#8358;)</label>
+              <input type="number" id="sed-amount" class="form-input" required>
+            </div>
+          </div>
+          <div class="form-group" id="sed-general-waste-group" style="display:none;">
+            <label class="form-label">Gen. Waste (&#8358;)</label>
+            <input type="number" id="sed-general-waste" class="form-input">
+          </div>
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label class="form-label">Date of Payment</label>
+              <input type="date" id="sed-date" class="form-input" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Month</label>
+              <input type="text" id="sed-month" class="form-input" list="pay-month-suggestions" placeholder="Month paid for" required>
+            </div>
+          </div>
+          <label class="settings-check" style="background:var(--primary-light);border-radius:10px;padding:12px;">
+            <input type="checkbox" id="sed-is-re">
+            <span>Print <strong>(RE-Request)</strong> beside the outlet name.</span>
+          </label>
+          <div class="sch-edit-danger">
+            <span>Captured in error? Remove this entry from the schedule. The letter and its totals update immediately.</span>
+            <button type="button" class="btn btn-sm btn-danger" onclick="removeSchedulePayment()">&#128465;&#65039; Remove Entry</button>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-edit-schedule-payment')">Cancel</button>
+          <button type="submit" class="btn btn-primary">&#128190; Save Correction</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- INTERACTIVE USER PHOTO ZOOM / PINCH / CROP EDITOR -->
+  <div class="modal-backdrop" id="modal-photo-editor" style="z-index:1500;">
+    <div class="modal-card" style="max-width:460px;">
+      <div class="modal-header">
+        <h3 class="modal-title">&#128247; Edit &amp; Zoom User Photo</h3>
+        <button class="modal-close-btn" onclick="closePhotoEditorModal()">&#10005;</button>
+      </div>
+      <div class="modal-body" style="align-items:center;">
+        <p style="font-size:12.5px;color:var(--text-muted);text-align:center;line-height:1.45;margin:0 0 8px;">
+          Drag to position &bull; pinch with two fingers or use the zoom slider to zoom in/out before saving.
+        </p>
+        <div class="photo-crop-stage" id="photo-crop-stage">
+          <canvas id="photo-crop-canvas" width="240" height="240"></canvas>
+          <div class="photo-crop-ring"></div>
+        </div>
+        <div class="photo-crop-controls">
+          <button type="button" class="btn btn-sm btn-outline" onclick="photoEditorZoomBy(-0.2)" title="Zoom out">&#8722;</button>
+          <input type="range" id="photo-zoom-slider" min="1" max="4" step="0.02" value="1" oninput="photoEditorSetZoom(this.value)">
+          <button type="button" class="btn btn-sm btn-outline" onclick="photoEditorZoomBy(0.2)" title="Zoom in">&#43;</button>
+          <span class="photo-zoom-readout" id="photo-zoom-readout">1.0&times;</span>
+        </div>
+        <div class="action-btn-group" style="justify-content:center;margin-top:6px;">
+          <button type="button" class="btn btn-sm btn-outline" onclick="photoEditorRotate(90)">&#8635; Rotate 90&deg;</button>
+          <button type="button" class="btn btn-sm btn-outline" onclick="photoEditorReset()">&#8634; Reset Position</button>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline" onclick="closePhotoEditorModal()">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="applyPhotoEditorCrop()">&#10003; Apply Edited Photo</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MONTHLY REPORT MODALS (SECTIONS 1 TO 5) -->
+  <!-- SECTION 1 MODAL: INDUSTRIAL / PARTNER VEHICLE EVACUATION TRIP -->
+  <div class="modal-backdrop" id="modal-mr-industrial">
+    <div class="modal-card" style="max-width:560px;">
+      <div class="modal-header">
+        <h3 class="modal-title" id="mr-ind-modal-title">+ Add Industrial / Vehicle Usage Trip</h3>
+        <button class="modal-close-btn" onclick="closeModal('modal-mr-industrial')">&#10005;</button>
+      </div>
+      <form onsubmit="saveMonthlyIndEntry(event)">
+        <div class="modal-body">
+          <input type="hidden" id="mr-ind-edit-idx" value="">
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label class="form-label">Section / Operator</label>
+              <select id="mr-ind-group" class="form-select" onchange="onMonthlyIndGroupChanged()">
+                <option value="teem">TEEM Business Industrial Evacuation</option>
+                <option value="partner">Other Operator</option>
+              </select>
+            </div>
+            <div class="form-group" id="mr-ind-partner-name-wrap" style="display:none;">
+              <label class="form-label">Operator Name</label>
+              <input type="text" id="mr-ind-partner-title" class="form-input" list="mr-partner-operators-list" value="" placeholder="Operator name">
+              <datalist id="mr-partner-operators-list">
+                <option value="JIB &amp; JIB"></option>
+              </datalist>
+            </div>
+          </div>
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label class="form-label">Date of Evacuation</label>
+              <input type="date" id="mr-ind-date" class="form-input" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Facility / Company Name</label>
+              <input type="text" id="mr-ind-company" class="form-input" list="mr-industrial-facilities-list" placeholder="Facility name" required>
+              <datalist id="mr-industrial-facilities-list"></datalist>
+            </div>
+          </div>
+          <div class="form-grid-3" id="mr-ind-trip-grid" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;">
+            <div class="form-group">
+              <label class="form-label">No of Trips</label>
+              <input type="number" id="mr-ind-trips" class="form-input" min="1" step="1" value="1" required oninput="updateMonthlyIndPreviewTotal()">
+            </div>
+            <div class="form-group admin-only" id="mr-ind-rate-group">
+              <label class="form-label">Allocated Rate / Trip (&#8358;)</label>
+              <input type="number" id="mr-ind-rate" class="form-input" min="0" step="500" value="40000" oninput="updateMonthlyIndPreviewTotal()">
+            </div>
+            <div class="form-group admin-only" id="mr-ind-total-group">
+              <label class="form-label">Total Amount (Trips &times; Rate)</label>
+              <input type="text" id="mr-ind-total-preview" class="form-input" value="&#8358;40,000" readonly style="font-weight:800;background:#F0FDF4;color:#14532D;">
+            </div>
+          </div>
+          <p id="mr-supervisor-rate-hint" style="display:none;font-size:12px;color:#475569;margin-top:8px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:8px 10px;">
+            &#128712; Supervisor entry records the <strong>Facility Name</strong>, <strong>Date</strong>, <strong>Operator Group</strong>, and <strong>No of Trips</strong>. The Administrator assigns and edits the corresponding vehicle usage amount.
+          </p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-mr-industrial')">Cancel</button>
+          <button type="submit" class="btn btn-primary">&#128190; Save Entry</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- SECTION 2 MODAL: SALARY SCHEDULE -->
+  <div class="modal-backdrop" id="modal-mr-salary">
+    <div class="modal-card" style="max-width:520px;">
+      <div class="modal-header">
+        <h3 class="modal-title" id="mr-sal-modal-title">+ Add Officer Salary Entry</h3>
+        <button class="modal-close-btn" onclick="closeModal('modal-mr-salary')">&#10005;</button>
+      </div>
+      <form onsubmit="saveMonthlySalaryEntry(event)">
+        <div class="modal-body">
+          <input type="hidden" id="mr-sal-edit-idx" value="">
+          <div class="form-group">
+            <label class="form-label">Officer Name</label>
+            <input type="text" id="mr-sal-name" class="form-input" placeholder="Name of officer" required>
+          </div>
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label class="form-label">Bank (Banker)</label>
+              <input type="text" id="mr-sal-bank" class="form-input" placeholder="Name of bank" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Account Number</label>
+              <input type="text" id="mr-sal-acct" class="form-input" placeholder="Account number" required>
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Monthly Salary Amount (&#8358;)</label>
+            <input type="number" id="mr-sal-amount" class="form-input" min="0" step="500" placeholder="Amount in naira" required>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-mr-salary')">Cancel</button>
+          <button type="submit" class="btn btn-primary">&#128190; Save Salary Entry</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- SECTION 3 MODAL: MUNICIPAL REVENUE BREAKDOWN -->
+  <div class="modal-backdrop" id="modal-mr-municipal">
+    <div class="modal-card" style="max-width:520px;">
+      <div class="modal-header">
+        <h3 class="modal-title" id="mr-mun-modal-title">+ Add Supervisor Municipal Revenue</h3>
+        <button class="modal-close-btn" onclick="closeModal('modal-mr-municipal')">&#10005;</button>
+      </div>
+      <form onsubmit="saveMonthlyMunicipalEntry(event)">
+        <div class="modal-body">
+          <input type="hidden" id="mr-mun-edit-idx" value="">
+          <div class="form-group">
+            <label class="form-label">Name of Supervisor</label>
+            <input type="text" id="mr-mun-supervisor" class="form-input" list="mr-supervisors-datalist" placeholder="Supervisor name" required>
+            <datalist id="mr-supervisors-datalist"></datalist>
+          </div>
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label class="form-label">Paid into TEEM Account (&#8358;)</label>
+              <input type="number" id="mr-mun-teem" class="form-input" min="0" step="100" value="0" required oninput="updateMonthlyMunPreviewTotal()">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Paid into OGWAMA Account (&#8358;)</label>
+              <input type="number" id="mr-mun-ogwama" class="form-input" min="0" step="100" value="0" required oninput="updateMonthlyMunPreviewTotal()">
+            </div>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Supervisor Total Revenue (TEEM + OGWAMA)</label>
+            <input type="text" id="mr-mun-total-preview" class="form-input" value="&#8358;0" readonly style="font-weight:800;background:#F0FDF4;color:#14532D;">
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-mr-municipal')">Cancel</button>
+          <button type="submit" class="btn btn-primary">&#128190; Save Municipal Revenue</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- SECTION 4 MODAL: FUEL PURCHASED -->
+  <div class="modal-backdrop" id="modal-mr-fuel">
+    <div class="modal-card" style="max-width:520px;">
+      <div class="modal-header">
+        <h3 class="modal-title" id="mr-fuel-modal-title">+ Add Fuel Purchase</h3>
+        <button class="modal-close-btn" onclick="closeModal('modal-mr-fuel')">&#10005;</button>
+      </div>
+      <form onsubmit="saveMonthlyFuelEntry(event)">
+        <div class="modal-body">
+          <input type="hidden" id="mr-fuel-edit-idx" value="">
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label class="form-label">Date of Purchase</label>
+              <input type="date" id="mr-fuel-date" class="form-input" required>
+            </div>
+            <div class="form-group">
+              <label class="form-label">Type of Fuel</label>
+              <select id="mr-fuel-type" class="form-select">
+                <option value="Diesel">Diesel (AGO)</option>
+                <option value="Petrol">Petrol (PMS)</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-grid-3" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;">
+            <div class="form-group">
+              <label class="form-label">No of Litres</label>
+              <input type="number" id="mr-fuel-litres" class="form-input" min="1" step="0.5" value="50" required oninput="updateMonthlyFuelPreviewTotal()">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Amount per Litre (&#8358;)</label>
+              <input type="number" id="mr-fuel-rate" class="form-input" min="1" step="10" value="1850" required oninput="updateMonthlyFuelPreviewTotal()">
+            </div>
+            <div class="form-group">
+              <label class="form-label">Total Fuel Cost</label>
+              <input type="text" id="mr-fuel-total-preview" class="form-input" value="&#8358;92,500" readonly style="font-weight:800;background:#F0FDF4;color:#14532D;">
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-mr-fuel')">Cancel</button>
+          <button type="submit" class="btn btn-primary">&#128190; Save Fuel Purchase</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- SECTION 5 MODAL: VEHICLE REPAIR -->
+  <div class="modal-backdrop" id="modal-mr-repair">
+    <div class="modal-card" style="max-width:520px;">
+      <div class="modal-header">
+        <h3 class="modal-title" id="mr-rep-modal-title">+ Add Vehicle Repair / Maintenance</h3>
+        <button class="modal-close-btn" onclick="closeModal('modal-mr-repair')">&#10005;</button>
+      </div>
+      <form onsubmit="saveMonthlyRepairEntry(event)">
+        <div class="modal-body">
+          <input type="hidden" id="mr-rep-edit-idx" value="">
+          <div class="form-group">
+            <label class="form-label">Vehicle</label>
+            <input type="text" id="mr-rep-vehicle" class="form-input" value="BLUE COMPACTOR" placeholder="Vehicle name and fleet code" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Repair Description / Particular(s)</label>
+            <input type="text" id="mr-rep-desc" class="form-input" placeholder="Parts supplied" required>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Repair Amount (&#8358;)</label>
+            <input type="number" id="mr-rep-amount" class="form-input" min="0" step="500" placeholder="Amount in naira" required>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-mr-repair')">Cancel</button>
+          <button type="submit" class="btn btn-primary">&#128190; Save Repair Entry</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- SETTINGS PASSWORD GATE MODAL -->
+  <div class="modal-backdrop" id="modal-settings-password">
+    <div class="modal-card" style="max-width:420px;">
+      <div class="modal-header">
+        <h3 class="modal-title">&#128274; Settings Access Password</h3>
+        <button class="modal-close-btn" onclick="closeModal('modal-settings-password')">&#10005;</button>
+      </div>
+      <form onsubmit="submitSettingsPassword(event)">
+        <div class="modal-body">
+          <p style="font-size:13px;color:var(--text-secondary);line-height:1.5;">
+            Enter the Settings menu password to access system configuration, account control, cloud sync, and administrative tools.
+          </p>
+          <div class="form-group">
+            <label class="form-label" for="settings-gate-password">Settings Password</label>
+            <div class="password-field">
+              <input type="password" id="settings-gate-password" class="form-input" placeholder="Enter password" autocomplete="off" required>
+              <button type="button" class="password-peek"
+                  onclick="togglePasswordPeek('settings-gate-password', this)"
+                  onmousedown="startPasswordPeek('settings-gate-password', this)"
+                  onmouseup="stopPasswordPeek('settings-gate-password', this)"
+                  onmouseleave="stopPasswordPeek('settings-gate-password', this)"
+                  ontouchstart="startPasswordPeek('settings-gate-password', this)"
+                  ontouchend="stopPasswordPeek('settings-gate-password', this)"
+                  ontouchcancel="stopPasswordPeek('settings-gate-password', this)"
+                  title="Show / hide password">&#128065;</button>
+            </div>
+          </div>
+          <div id="settings-gate-error" style="display:none;color:var(--danger-red);font-size:12px;font-weight:700;"></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline" onclick="closeModal('modal-settings-password')">Cancel</button>
+          <button type="submit" class="btn btn-primary">&#128275; Unlock Settings</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <datalist id="pay-month-suggestions">
+    <option value="January"></option>
+    <option value="February"></option>
+    <option value="March"></option>
+    <option value="April"></option>
+    <option value="May"></option>
+    <option value="June"></option>
+    <option value="July"></option>
+    <option value="August"></option>
+    <option value="September"></option>
+    <option value="October"></option>
+    <option value="November"></option>
+    <option value="December"></option>
+    <option value="Jan/Feb"></option>
+    <option value="Nov/Dec"></option>
+    <option value="Oct - Dec"></option>
+    <option value="Nov - Jan"></option>
+  </datalist>
+
+  <script src="assets/embedded_images.js"></script>
+  <script src="assets/jspdf.umd.min.js"></script>
+  <script src="cloud/config.js"></script>
+  <script src="app.js"></script>
+<script>
+// Hide Netlify "powered by" badge on Windows .exe and mobile .apk/web deployments
+(function hideNetlifyBadge() {
+  var els = document.querySelectorAll('[class*="netlify"], [id*="netlify"], a[href*="netlify.app"]');
+  els.forEach(function(el) { el.style.display = 'none'; el.remove(); });
+  var style = document.createElement('style');
+  style.textContent = '.netlify-badge, [class*="netlify-badge"], #netlify-widget, a[href*="netlify"] { display: none !important; visibility: hidden !important; }';
+  (document.head || document.documentElement).appendChild(style);
+})();
+</script>
+</body>
+</html>

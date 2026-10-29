@@ -1,0 +1,26 @@
+{
+  "name": "TEEM Waste Management System v1",
+  "short_name": "TEEM Portal",
+  "description": "PSP Concession Operations, GPS Field Map, Evacuation Dispatch and Document Archive Portal v1",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#FAFAF8",
+  "theme_color": "#1B5E20",
+  "version": "16.0.0",
+  "icons": [
+    {
+      "src": "assets/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "assets/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
