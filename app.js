@@ -4,7 +4,7 @@
 // 100% Online & Offline Hybrid Architecture with PDF Generation & Cloud Sync
 // ============================================================================
 
-const RELEASE = '18';
+const RELEASE = '19';
 const CURRENT_SYSTEM_DATE = (function () {
   const now = new Date();
   return now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
@@ -3390,13 +3390,14 @@ function openStreetReportModal(streetId) {
 
 function onStreetReportMonthChanged() { renderStreetReportContent(); }
 
-// A record covers a month if the month falls anywhere inside what the record
-// was written for. "Aug/Sept" therefore matches both August and September,
+// A record belongs to the month it was written FOR, never the day the money
+// happened to reach the bank. A September payment made on 1 October shows under
+// September only. "Aug/Sept" therefore matches both August and September,
 // "Apr - Aug" matches all five, and a plain "Sept" matches only September.
+// The payment date is used only when no month can be read at all.
 function recordMatchesMonthKey(item, monthKey) {
   if (!monthKey || monthKey === 'all') return true;
   if (!item) return false;
-  if (String(item.date || '').slice(0, 7) === monthKey) return true;
   const parts = String(monthKey).split('-');
   if (parts.length !== 2) return false;
   const target = periodIndexFromParts(Number(parts[0]), Number(parts[1]));
@@ -11575,7 +11576,7 @@ function streetReportSpec() {
   const filterEl = document.getElementById('street-report-month-filter');
   const monthFilter = filterEl ? filterEl.value : 'all';
   const history = (s.evacuationHistory || []).slice();
-  const rows = monthFilter === 'all' ? history : history.filter(h => (h.date || '').slice(0, 7) === monthFilter);
+  const rows = monthFilter === 'all' ? history : history.filter(h => recordMatchesMonthKey(h, monthFilter));
 
   return {
     kind: 'street',
