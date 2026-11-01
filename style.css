@@ -4007,3 +4007,17 @@ a[href*="netlify"] .netlify-badge,
   accent-color: #0F5328;
   cursor: pointer;
 }
+
+/* ---------- v17: request history + save locations ---------- */
+.req-hist-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid var(--border,#E2E8F0);border-radius:10px;margin-bottom:8px;background:#fff;flex-wrap:wrap;}
+.req-hist-main{display:flex;flex-direction:column;gap:2px;min-width:0;}
+.req-hist-main strong{font-size:13px;color:var(--primary,#14532D);}
+.req-hist-main span{font-size:12px;color:#64748B;}
+.req-hist-actions{display:flex;gap:8px;}
+.req-hist-actions .btn{padding:6px 12px;font-size:12px;}
+.save-loc-grid{margin-top:4px;}
+@media (max-width:520px){
+  .req-hist-row{align-items:flex-start;}
+  .req-hist-actions{width:100%;}
+  .req-hist-actions .btn{flex:1;}
+}

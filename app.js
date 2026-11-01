@@ -4,7 +4,7 @@
 // 100% Online & Offline Hybrid Architecture with PDF Generation & Cloud Sync
 // ============================================================================
 
-const RELEASE = '16';
+const RELEASE = '17';
 const CURRENT_SYSTEM_DATE = (function () {
   const now = new Date();
   return now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
@@ -1424,7 +1424,7 @@ function signOut(reason) {
   store.save();
   showLoginScreen();
   if (reason === 'inactivity') {
-    showToast('\ud83d\udd12 Automatically signed out after 5 minutes of inactivity.', 'warning');
+    showToast('\ud83d\udd12 Signed out after 5 minutes idle.', 'warning');
   } else {
     showToast('\ud83d\udc4b Signed out. Sign in to continue.', 'info');
   }
@@ -1667,7 +1667,7 @@ function readPhotoFile(input, previewId) {
       showPreview(raw);
     }
   };
-  reader.onerror = () => showToast('\u26a0\ufe0f That file could not be read. Please choose a JPG or PNG picture.', 'error');
+  reader.onerror = () => showToast('\u26a0\ufe0f File could not be read. Use JPG or PNG.', 'error');
   reader.readAsDataURL(file);
 }
 
@@ -1681,7 +1681,7 @@ function openPhotoEditorForInput(inputId, previewId) {
   }
   if (!src) {
     if (input) input.click();
-    else showToast('\ud83d\udcf7 Upload a photograph first, then zoom or drag to adjust it.', 'info');
+    else showToast('\ud83d\udcf7 Upload a photo first.', 'info');
     return;
   }
   openPhotoEditorModal(src, inputId, previewId);
@@ -1844,7 +1844,7 @@ function applyPhotoEditorCrop() {
     preview.innerHTML = '<img src="' + dataUrl + '" class="photo-preview-img" alt="Edited photo"><span class="photo-preview-caption">Edited (' + (photoEditorState.zoom || 1).toFixed(1) + '\u00d7)</span>';
   }
   closeModal('modal-photo-editor');
-  showToast('\u2705 Photo zoom & crop applied. Click Save to store it on the user account.', 'success');
+  showToast('\u2705 Crop applied. Press Save.', 'success');
 }
 
 function closePhotoEditorModal() {
@@ -4833,7 +4833,7 @@ function renderGpsNearest() {
   const box = document.getElementById('gps-nearest-list');
   if (!box) return;
   if (!gpsSelf) {
-    box.innerHTML = '<div class="gps-empty">Press <strong>Locate Me</strong> to read this device\'s GPS position. The nearest facilities and streets, with distance and status, will be listed here - fully offline.</div>';
+    'Press Locate Me to show your position.'
     return;
   }
 
@@ -5628,6 +5628,145 @@ function addCustomPaymentToSchedule(e) {
   showToast('\u2705 Payment entry for "' + (isMunicipal ? depositor : outlet) + '" added to the schedule.', 'success');
 }
 
+// ===========================================================================
+// v17: REQUEST HISTORY - reopen or correct an earlier request
+// ===========================================================================
+function ensureRequestHistory() {
+  if (!store || !store.state) return [];
+  if (!Array.isArray(store.state.requestHistory)) store.state.requestHistory = [];
+  return store.state.requestHistory;
+}
+
+function recordRequestHistory(spec, filename, docId) {
+  if (!spec || spec.kind !== 'request') return null;
+  const hist = ensureRequestHistory();
+  const rows = (spec.rows || []).map(r => ({
+    outlet: r.outlet, depositor: r.depositor, amount: r.amount,
+    date: r.date, month: r.month, genWaste: r.genWaste, isReRequest: !!r.isReRequest
+  }));
+  const entry = {
+    id: 'rq_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    reference: spec.reference || '',
+    category: spec.category || activeRequestCategory,
+    savedAt: new Date().toISOString(),
+    monthLabel: (rows[0] && rows[0].month) || '',
+    rowCount: rows.length,
+    total: spec.total || 0,
+    rebateValue: spec.rebateValue || 0,
+    rows: rows,
+    rowIds: (spec.rowIds || []).slice(),
+    filename: filename || '',
+    docId: docId || '',
+    status: 'saved'
+  };
+  // A correction of the same request replaces the earlier record.
+  const existing = hist.findIndex(h => h.reference && h.reference === entry.reference);
+  if (existing >= 0) { entry.id = hist[existing].id; hist[existing] = entry; }
+  else hist.unshift(entry);
+  if (hist.length > 60) store.state.requestHistory = hist.slice(0, 60);
+  if (typeof store.save === 'function') store.save();
+  return entry;
+}
+
+function markRequestRowsDone(spec) {
+  if (!spec || spec.kind !== 'request') return;
+  const ids = spec.rowIds || [];
+  (store.state.paymentScheduleRecords || []).forEach(p => {
+    if (ids.length && ids.indexOf(p.id) === -1) return;
+    if (!ids.length && !p.selected) return;
+    p.selected = false;
+    p.requested = true;
+    p.requestedAt = new Date().toISOString();
+    p.requestedRef = spec.reference || '';
+  });
+  if (typeof store.save === 'function') store.save();
+}
+
+function startNewRequest() {
+  const cat = activeRequestCategory;
+  const records = (store.state.paymentScheduleRecords || []).filter(p => (p.category || '') === cat);
+  let cleared = 0;
+  records.forEach(p => { if (p.selected) { p.selected = false; cleared++; } });
+  store.state.editingRequestId = '';
+  store.state.editingRequestRef = '';
+  if (typeof store.save === 'function') store.save();
+  renderRequestsView();
+  showToast(cleared
+    ? '\u2705 New request started. ' + cleared + ' entr' + (cleared === 1 ? 'y' : 'ies') + ' cleared.'
+    : '\u2705 Ready for a new request.', 'success');
+}
+
+function openRequestHistory() {
+  const hist = ensureRequestHistory();
+  const body = document.getElementById('request-history-body');
+  if (!body) return;
+  body.innerHTML = hist.length ? hist.map(h => {
+    const date = new Date(h.savedAt);
+    const when = isNaN(date.getTime()) ? h.savedAt : date.toLocaleDateString('en-GB') + ' ' + date.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    return '<div class="req-hist-row">' +
+      '<div class="req-hist-main">' +
+        '<strong>' + escapeHtml(h.category) + ' \u2022 ' + escapeHtml(h.reference || '') + '</strong>' +
+        '<span>' + when + ' \u2022 ' + h.rowCount + ' row' + (h.rowCount === 1 ? '' : 's') + ' \u2022 ' + formatNaira(h.total) + '</span>' +
+      '</div>' +
+      '<div class="req-hist-actions">' +
+        '<button type="button" class="btn btn-outline" onclick="reopenRequestHistory(\'' + h.id + '\')">\u270f\ufe0f Edit</button>' +
+        '<button type="button" class="btn btn-outline" onclick="viewRequestHistory(\'' + h.id + '\')">\ud83d\udd0d View</button>' +
+      '</div>' +
+    '</div>';
+  }).join('') : '<div class="report-empty">No saved request yet. A request is saved when you save or print the letter.</div>';
+  openModal('modal-request-history');
+}
+
+function findRequestHistory(id) {
+  return ensureRequestHistory().find(h => h.id === id) || null;
+}
+
+function reopenRequestHistory(id) {
+  const h = findRequestHistory(id);
+  if (!h) return;
+  activeRequestCategory = h.category;
+  const catMap = {
+    'Commercial': 'req-cat-commercial', 'Industrial': 'req-cat-industrial', 'Medical': 'req-cat-medical',
+    'Agricultural Waste': 'req-cat-agricultural', 'Construction Waste': 'req-cat-construction', 'Municipal': 'req-cat-municipal'
+  };
+  Object.keys(catMap).forEach(k => {
+    const el = document.getElementById(catMap[k]);
+    if (el) el.classList.toggle('active', k === h.category);
+  });
+  // Tick only the entries recorded on that request.
+  const ids = h.rowIds || [];
+  (store.state.paymentScheduleRecords || []).forEach(p => {
+    p.selected = ids.length ? ids.indexOf(p.id) !== -1 : false;
+  });
+  store.state.editingRequestId = h.id;
+  store.state.editingRequestRef = h.reference || '';
+  if (typeof store.save === 'function') store.save();
+  closeModal('modal-request-history');
+  switchView('requests');
+  renderRequestsView();
+  showToast('\u270f\ufe0f Editing request ' + (h.reference || '') + '.', 'success');
+}
+
+function viewRequestHistory(id) {
+  const h = findRequestHistory(id);
+  if (!h) return;
+  const rows = (h.rows || []).map((r, i) => '<tr>' +
+    '<td class="col-sn">' + (i + 1) + '.</td>' +
+    '<td>' + escapeHtml(r.outlet || '') + '</td>' +
+    '<td>' + escapeHtml(r.depositor || '') + '</td>' +
+    '<td class="col-amount">' + Number(r.amount || 0).toLocaleString('en-NG') + '</td>' +
+    '<td class="col-date">' + formatShortDate(r.date) + '</td>' +
+    '<td class="col-month">' + escapeHtml(r.month || '') + '</td>' +
+  '</tr>').join('');
+  const body = document.getElementById('request-history-body');
+  if (body) {
+    body.innerHTML = '<button type="button" class="btn btn-outline" style="margin-bottom:10px;" onclick="openRequestHistory()">\u2190 Back to list</button>' +
+      '<div class="req-hist-main" style="margin-bottom:10px;"><strong>' + escapeHtml(h.category) + ' \u2022 ' + escapeHtml(h.reference || '') + '</strong>' +
+      '<span>' + h.rowCount + ' rows \u2022 ' + formatNaira(h.total) + '</span></div>' +
+      '<div style="overflow:auto;"><table class="data-table"><thead><tr><th>S/N</th><th>Outlet</th><th>Depositor</th><th>Amount</th><th>Date</th><th>Month</th></tr></thead><tbody>' + rows + '</tbody></table></div>';
+  }
+}
+
 function renderRequestsView() {
   const data = requestSelection();
   const meta = data.meta;
@@ -5654,8 +5793,8 @@ function renderRequestsView() {
   const rowsHint = document.getElementById('req-rows-hint');
   if (rowsHint) {
     rowsHint.innerHTML = isSupervisor()
-      ? 'Tick the payment entries to include in the letter. Amounts, dates and the re-request marker are corrected by the administrator.'
-      : 'Tick the payment entries to include in the letter. Switch <strong>RE-Request</strong> on for a payment that is being requested again - it prints as <strong>(RE-Request)</strong> beside the outlet name.';
+      ? 'Select the entries for this letter.'
+      : 'Select the entries. Turn on <strong>RE</strong> for a repeat request.';
   }
 
   const lhToggle = document.getElementById('req-letterhead-toggle');
@@ -6171,7 +6310,7 @@ function openEditFacilityModal(facilityId, editPaymentIdx, editEvacIdx) {
   if (historyNote) {
     const history = (f.paymentHistory || []).slice(0, 6);
     historyNote.innerHTML = history.length
-      ? '<strong>' + f.paymentHistory.length + ' payment record(s) on file</strong> \u2014 select any record below to edit or delete it, or choose <em>+ Add New Payment Record</em>.' +
+      ? '<strong>' + f.paymentHistory.length + ' payment record(s)</strong> \u2014 select one to edit.' +
         '<div style="margin-top:6px;display:flex;flex-direction:column;gap:3px;">' +
         history.map((p, idx) => '<span>\u2022 #' + (idx + 1) + ': ' + formatShortDate(p.date) + ' \u2022 ' + formatNaira(p.amount) + ' \u2022 ' + escapeHtml(p.month || '') + ' (' + escapeHtml(formatCoveragePeriod(p, ' \u2192 ')) + ') \u2022 ' + escapeHtml(p.payerName || '') + '</span>').join('') +
         '</div>'
@@ -6732,7 +6871,371 @@ function onCompanyNameInput(val) {
   }
 }
 
+// ===========================================================================
+// v17: DEVICE FOLDERS - writes straight into a folder the user picked once
+// ===========================================================================
+// Chrome / Edge / the desktop build can hand the page a real directory handle.
+// The handle is kept in IndexedDB, so the folder is remembered between visits
+// and every later document goes to the same place without asking again.
+var TEEM_FS_DB = 'TEEM_SaveFolders';
+var TEEM_FS_STORE = 'handles';
+
+function teemFsSupported() {
+  return typeof window !== 'undefined' && typeof window.showDirectoryPicker === 'function';
+}
+
+function teemFsDb() {
+  return new Promise(function (resolve, reject) {
+    if (typeof window === 'undefined' || !window.indexedDB) return reject(new Error('no-idb'));
+    var req = window.indexedDB.open(TEEM_FS_DB, 1);
+    req.onupgradeneeded = function (e) {
+      var db = e.target.result;
+      if (!db.objectStoreNames.contains(TEEM_FS_STORE)) db.createObjectStore(TEEM_FS_STORE);
+    };
+    req.onsuccess = function () { resolve(req.result); };
+    req.onerror = function () { reject(req.error); };
+  });
+}
+
+function teemFsGetHandle(key) {
+  return teemFsDb().then(function (db) {
+    return new Promise(function (resolve, reject) {
+      var tx = db.transaction(TEEM_FS_STORE, 'readonly');
+      var req = tx.objectStore(TEEM_FS_STORE).get(key);
+      req.onsuccess = function () { resolve(req.result || null); };
+      req.onerror = function () { reject(req.error); };
+    });
+  }).catch(function () { return null; });
+}
+
+function teemFsSetHandle(key, handle) {
+  return teemFsDb().then(function (db) {
+    return new Promise(function (resolve) {
+      var tx = db.transaction(TEEM_FS_STORE, 'readwrite');
+      tx.objectStore(TEEM_FS_STORE).put(handle, key);
+      tx.oncomplete = function () { resolve(true); };
+      tx.onerror = function () { resolve(false); };
+    });
+  }).catch(function () { return false; });
+}
+
+function teemFsForgetHandle(key) {
+  return teemFsDb().then(function (db) {
+    return new Promise(function (resolve) {
+      var tx = db.transaction(TEEM_FS_STORE, 'readwrite');
+      tx.objectStore(TEEM_FS_STORE).delete(key);
+      tx.oncomplete = function () { resolve(true); };
+    });
+  }).catch(function () { return false; });
+}
+
+// Asks the user to point at the folder that this document type should use.
+async function chooseFolderForType(key) {
+  if (!teemFsSupported()) {
+    showToast('\u2139\ufe0f This browser cannot pick a folder. Use Chrome, Edge or the installed app.', 'warning');
+    return;
+  }
+  try {
+    var handle = await window.showDirectoryPicker({ mode: 'readwrite', id: 'teem-' + key });
+    var granted = await teemFsEnsurePermission(handle);
+    if (!granted) { showToast('\u26a0\ufe0f Folder permission was not granted.', 'error'); return; }
+    await teemFsSetHandle(key, handle);
+    var label = (SAVE_LOCATION_TYPES.find(function (t) { return t.key === key; }) || {}).label || key;
+    showToast('\u2705 ' + label + ' will be saved to "' + handle.name + '".', 'success');
+    await teemFsRefreshLabels();
+  } catch (err) {
+    if (err && err.name === 'AbortError') return;   // user cancelled
+    showToast('\u26a0\ufe0f Could not open the folder.', 'error');
+  }
+}
+
+async function teemFsEnsurePermission(handle) {
+  try {
+    var opts = { mode: 'readwrite' };
+    if (handle.queryPermission) {
+      var q = await handle.queryPermission(opts);
+      if (q === 'granted') return true;
+    }
+    if (handle.requestPermission) {
+      return (await handle.requestPermission(opts)) === 'granted';
+    }
+    return true;
+  } catch (e) {
+    return false;
+  }
+}
+
+function teemDataUriToBlob(dataUri, mime) {
+  var idx = String(dataUri).indexOf(',');
+  var b64 = idx >= 0 ? dataUri.slice(idx + 1) : dataUri;
+  var bin = atob(b64);
+  var arr = new Uint8Array(bin.length);
+  for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+  return new Blob([arr], { type: mime || 'application/octet-stream' });
+}
+
+// Writes into the chosen folder, creating the per-type subfolder when the user
+// picked a single base folder instead of a folder per document.
+async function teemFsWrite(key, fileName, data, mime, makeSubfolder) {
+  var root = await teemFsGetHandle(key);
+  var usedRootOnly = true;
+  if (!root) {
+    root = await teemFsGetHandle('__base__');
+    if (!root) return null;
+    usedRootOnly = false;
+  }
+  if (!await teemFsEnsurePermission(root)) return null;
+
+  var dir = root;
+  if (!usedRootOnly && makeSubfolder) {
+    var sub = sanitizeFolderPath(makeSubfolder, '');
+    if (sub) {
+      var parts = sub.split('/');
+      for (var i = 0; i < parts.length; i++) {
+        if (parts[i]) dir = await dir.getDirectoryHandle(parts[i], { create: true });
+      }
+    }
+  }
+  var fileHandle = await dir.getFileHandle(fileName, { create: true });
+  var writable = await fileHandle.createWritable();
+  var blob = typeof data === 'string' ? teemDataUriToBlob(data, mime) : data;
+  await writable.write(blob);
+  await writable.close();
+  return (usedRootOnly ? '' : dir.name + '/') + fileName;
+}
+
+// Fire-and-forget from the synchronous save path.
+function teemFsSaveAsync(key, fileName, data, mime, makeSubfolder) {
+  if (!teemFsSupported()) return false;
+  teemFsWrite(key, fileName, data, mime, makeSubfolder).then(function (path) {
+    if (path) showToast('\ud83d\udcc1 Saved to ' + path, 'success');
+  }).catch(function (err) {
+    console.warn('folder write failed', err);
+  });
+  return true;
+}
+
+async function chooseBaseFolder() {
+  if (!teemFsSupported()) {
+    showToast('\u2139\ufe0f This browser cannot pick a folder. Use Chrome, Edge or the installed app.', 'warning');
+    return;
+  }
+  try {
+    var handle = await window.showDirectoryPicker({ mode: 'readwrite', id: 'teem-base' });
+    if (!await teemFsEnsurePermission(handle)) { showToast('\u26a0\ufe0f Folder permission was not granted.', 'error'); return; }
+    await teemFsSetHandle('__base__', handle);
+    showToast('\u2705 Documents will be filed under "' + handle.name + '".', 'success');
+    await teemFsRefreshLabels();
+  } catch (err) {
+    if (err && err.name !== 'AbortError') showToast('\u26a0\ufe0f Could not open the folder.', 'error');
+  }
+}
+
+async function teemFsRefreshLabels() {
+  var rows = SAVE_LOCATION_TYPES;
+  for (var i = 0; i < rows.length; i++) {
+    var el = document.getElementById('save-loc-picked-' + rows[i].key);
+    if (!el) continue;
+    var h = await teemFsGetHandle(rows[i].key);
+    el.textContent = h ? ('\ud83d\udcc2 ' + h.name) : '';
+  }
+  var base = await teemFsGetHandle('__base__');
+  var baseEl = document.getElementById('save-base-picked');
+  if (baseEl) baseEl.textContent = base ? ('\ud83d\udcc2 ' + base.name) : 'No folder chosen';
+}
+
+// ===========================================================================
+// v17: SAVE LOCATIONS (device folders + Google Drive folders per document type)
+// ===========================================================================
+var SAVE_LOCATION_TYPES = [
+  { key: 'medical', label: 'Medical', folder: 'Medical Reports' },
+  { key: 'commercial', label: 'Commercial', folder: 'Commercial Reports' },
+  { key: 'industrial', label: 'Industrial', folder: 'Industrial Reports' },
+  { key: 'agricultural', label: 'Agricultural', folder: 'Agricultural Reports' },
+  { key: 'construction', label: 'Construction', folder: 'Construction Reports' },
+  { key: 'institutional', label: 'Institutional', folder: 'Institutional Reports' },
+  { key: 'municipal', label: 'Municipal', folder: 'Municipal Reports' },
+  { key: 'monthly', label: 'Monthly Reports', folder: 'Monthly Reports' },
+  { key: 'facility', label: 'Facility Reports', folder: 'Facility Reports' },
+  { key: 'audit', label: 'Compliance Audit', folder: 'Compliance Audit' },
+  { key: 'backup', label: 'Backups', folder: 'Backups' }
+];
+
+var SAVE_LOCATION_DEFAULTS = {
+  deviceRoot: 'Download/TEEM',
+  driveRoot: 'TEEM BUSINESS PORTAL',
+  folders: {
+    medical: 'Medical Reports',
+    commercial: 'Commercial Reports',
+    industrial: 'Industrial Reports',
+    agricultural: 'Agricultural Reports',
+    construction: 'Construction Reports',
+    institutional: 'Institutional Reports',
+    municipal: 'Municipal Reports',
+    monthly: 'Monthly Reports',
+    facility: 'Facility Reports',
+    audit: 'Compliance Audit',
+    backup: 'Backups'
+  },
+  autoDevice: true,
+  autoDrive: true
+};
+
+function cloneSaveLocationDefaults() {
+  return JSON.parse(JSON.stringify(SAVE_LOCATION_DEFAULTS));
+}
+
+function getSaveLocations() {
+  var s = (store && store.state && store.state.settings) || {};
+  var saved = s.saveLocations || {};
+  var defs = cloneSaveLocationDefaults();
+  return {
+    deviceRoot: String(saved.deviceRoot || defs.deviceRoot).trim() || defs.deviceRoot,
+    driveRoot: String(saved.driveRoot || s.googleDriveRootFolder || defs.driveRoot).trim() || defs.driveRoot,
+    folders: Object.assign({}, defs.folders, saved.folders || {}),
+    autoDevice: saved.autoDevice !== false,
+    autoDrive: saved.autoDrive !== false
+  };
+}
+
+function sanitizeFolderPath(value, fallback) {
+  var raw = String(value === undefined || value === null ? '' : value).trim();
+  if (!raw) raw = fallback || '';
+  return raw
+    .replace(/\\/g, '/')
+    .replace(/^\/+|\/+$/g, '')
+    .replace(/\.\./g, '')
+    .replace(/[\u0000-\u001f<>:"|?*]+/g, '')
+    .replace(/\/{2,}/g, '/');
+}
+
+// Which save-location bucket a document belongs to.
+function saveLocationKeyFor(category, docType) {
+  if (docType === 'monthly') return 'monthly';
+  if (docType === 'facility') return 'facility';
+  if (docType === 'audit') return 'audit';
+  if (docType === 'backup') return 'backup';
+  var map = {
+    'Medical': 'medical',
+    'Commercial': 'commercial',
+    'Institutional': 'institutional',
+    'Industrial': 'industrial',
+    'Agricultural Waste': 'agricultural',
+    'Construction Waste': 'construction',
+    'Municipal': 'municipal'
+  };
+  if (category && map[category]) return map[category];
+  if (category) {
+    var guess = String(category).toLowerCase().split(' ')[0];
+    var keys = Object.keys(SAVE_LOCATION_DEFAULTS.folders);
+    for (var i = 0; i < keys.length; i++) {
+      if (keys[i] === guess) return guess;
+    }
+  }
+  return 'commercial';
+}
+
+function deviceFolderFor(category, docType) {
+  var locs = getSaveLocations();
+  var key = saveLocationKeyFor(category, docType);
+  var base = sanitizeFolderPath(locs.deviceRoot, 'Download/TEEM');
+  var sub = sanitizeFolderPath(locs.folders[key], key);
+  return base + '/' + sub;
+}
+
+function driveFolderFor(category, docType) {
+  var locs = getSaveLocations();
+  var key = saveLocationKeyFor(category, docType);
+  return {
+    rootFolder: sanitizeFolderPath(locs.driveRoot, 'TEEM BUSINESS PORTAL'),
+    categoryFolder: sanitizeFolderPath(locs.folders[key], key),
+    key: key
+  };
+}
+
+function onSaveLocationInput() {
+  var preview = document.getElementById('save-loc-preview');
+  if (!preview) return;
+  var rootEl = document.getElementById('save-device-root');
+  var driveEl = document.getElementById('save-drive-root');
+  var base = sanitizeFolderPath(rootEl ? rootEl.value : '', 'Download/TEEM');
+  var driveBase = sanitizeFolderPath(driveEl ? driveEl.value : '', 'TEEM BUSINESS PORTAL');
+  var rows = SAVE_LOCATION_TYPES.map(function (t) {
+    var input = document.getElementById('save-loc-' + t.key);
+    var sub = sanitizeFolderPath(input ? input.value : t.folder, t.folder);
+    return '<div style="display:flex;justify-content:space-between;gap:10px;padding:2px 0;border-bottom:1px dotted #E2E8F0;">' +
+      '<span style="font-weight:700;">' + escapeHtml(t.label) + '</span>' +
+      '<span style="text-align:right;word-break:break-all;">' + escapeHtml(base + '/' + sub) +
+      '<br><span style="color:#64748B;">Drive: ' + escapeHtml(driveBase + '/' + sub) + '</span></span>' +
+      '</div>';
+  });
+  preview.innerHTML = rows.join('');
+}
+
+function renderSaveLocations() {
+  var grid = document.getElementById('save-loc-grid');
+  var locs = getSaveLocations();
+  var devRoot = document.getElementById('save-device-root');
+  var drvRoot = document.getElementById('save-drive-root');
+  var autoDev = document.getElementById('save-auto-device');
+  var autoDrv = document.getElementById('save-auto-drive');
+  if (devRoot) devRoot.value = locs.deviceRoot;
+  if (drvRoot) drvRoot.value = locs.driveRoot;
+  if (autoDev) autoDev.checked = locs.autoDevice;
+  if (autoDrv) autoDrv.checked = locs.autoDrive;
+  if (grid) {
+    const canPick = teemFsSupported();
+    grid.innerHTML = SAVE_LOCATION_TYPES.map(function (t) {
+      return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap;">' +
+        '<span style="font-size:12.5px;font-weight:700;color:#334155;min-width:112px;">' + escapeHtml(t.label) + '</span>' +
+        '<input type="text" class="form-input" id="save-loc-' + t.key + '" value="' + escapeHtml(locs.folders[t.key] || t.folder) + '" ' +
+        'style="flex:1;min-width:140px;padding:6px 8px;font-size:12.5px;" oninput="onSaveLocationInput()">' +
+        (canPick ? '<button type="button" class="btn btn-outline" style="padding:5px 10px;font-size:11.5px;" onclick="chooseFolderForType(\'' + t.key + '\')">Choose</button>' : '') +
+        '<span id="save-loc-picked-' + t.key + '" style="font-size:11.5px;color:#15803D;font-weight:700;"></span>' +
+        '</div>';
+    }).join('');
+    teemFsRefreshLabels();
+  }
+  onSaveLocationInput();
+}
+
+function saveSaveLocations() {
+  if (!store || !store.state) return;
+  store.state.settings = store.state.settings || {};
+  var folders = {};
+  SAVE_LOCATION_TYPES.forEach(function (t) {
+    var input = document.getElementById('save-loc-' + t.key);
+    folders[t.key] = sanitizeFolderPath(input ? input.value : '', t.folder) || t.folder;
+  });
+  var devRootEl = document.getElementById('save-device-root');
+  var drvRootEl = document.getElementById('save-drive-root');
+  var autoDevEl = document.getElementById('save-auto-device');
+  var autoDrvEl = document.getElementById('save-auto-drive');
+  store.state.settings.saveLocations = {
+    deviceRoot: sanitizeFolderPath(devRootEl ? devRootEl.value : '', 'Download/TEEM'),
+    driveRoot: sanitizeFolderPath(drvRootEl ? drvRootEl.value : '', 'TEEM BUSINESS PORTAL'),
+    folders: folders,
+    autoDevice: autoDevEl ? !!autoDevEl.checked : true,
+    autoDrive: autoDrvEl ? !!autoDrvEl.checked : true
+  };
+  store.state.settings.googleDriveRootFolder = store.state.settings.saveLocations.driveRoot;
+  if (typeof persistState === 'function') persistState();
+  if (typeof scheduleCloudSync === 'function') scheduleCloudSync();
+  showToast('\u2705 Save locations updated.', 'success');
+  renderSaveLocations();
+}
+
+function resetSaveLocations() {
+  if (!store || !store.state) return;
+  store.state.settings = store.state.settings || {};
+  store.state.settings.saveLocations = cloneSaveLocationDefaults();
+  if (typeof persistState === 'function') persistState();
+  showToast('\u21ba Save locations reset to default.', 'success');
+  renderSaveLocations();
+}
+
 function renderSettingsConsole() {
+  try { if (typeof renderSaveLocations === 'function') renderSaveLocations(); } catch (e) { console.warn(e); }
   ensureEditableSettingsInputs();
   const s = store.state.settings || {};
   const setIfNotFocused = (id, val) => {
@@ -6874,7 +7377,7 @@ function executeAdminDeletion(e) {
   const pwdEl = document.getElementById('admin-delete-password');
   const pwd = pwdEl ? pwdEl.value.trim() : '';
   if (!isValidAdminGatePassword(pwd)) {
-    showToast('\u26a0\ufe0f Security rejection: invalid Administrator password. Deletion is restricted to the Administrator.', 'error');
+    showToast('\u26a0\ufe0f Wrong administrator password.', 'error');
     if (window.TEEM_DESKTOP_RUNTIME && typeof window.TEEM_DESKTOP_RUNTIME.refocus === 'function') window.TEEM_DESKTOP_RUNTIME.refocus();
     if (pwdEl) { try { pwdEl.focus(); } catch (err) {} }
     return;
@@ -6982,7 +7485,7 @@ function saveArchiveSettings(e) {
       }
     }).catch(() => {});
   }
-  showToast('\u2699\ufe0f Company, Archive & Cloud Sync settings saved across devices.', 'success');
+  showToast('\u2699\ufe0f Settings saved.', 'success');
 }
 
 function hasCloudSyncConfigured() {
@@ -7046,14 +7549,14 @@ function copyCloudSyncCode() {
   saveArchiveSettings();
   const code = encodeCloudSyncCode();
   if (!code) {
-    showToast('\u26a0\ufe0f Enter your Supabase URL/Key or Google Apps Script URL first.', 'warning');
+    showToast('\u26a0\ufe0f Add a cloud URL first.', 'warning');
     return;
   }
   const out = document.getElementById('cloud-sync-code-output');
   if (out) out.value = code;
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(code).then(() => {
-      showToast('\ud83d\udccb Multi-Device Sync Code copied! Paste it into "Sync Across Devices" on any browser or phone.', 'success');
+      showToast('\ud83d\udccb Sync code copied.', 'success');
     }).catch(() => {
       showToast('\u2705 Sync Code generated in the box — select and copy it.', 'info');
     });
@@ -7066,7 +7569,7 @@ function copyCloudSyncedUrl() {
   saveArchiveSettings();
   const code = encodeCloudSyncCode();
   if (!code) {
-    showToast('\u26a0\ufe0f Enter your Supabase URL/Key or Google Apps Script URL first.', 'warning');
+    showToast('\u26a0\ufe0f Add a cloud URL first.', 'warning');
     return;
   }
   const baseUrl = (typeof window !== 'undefined' && window.location && window.location.href)
@@ -7077,7 +7580,7 @@ function copyCloudSyncedUrl() {
   if (out) out.value = fullLink;
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(fullLink).then(() => {
-      showToast('\ud83d\udd17 Cloud-Synced Web Link copied! Opening this link on any device connects it automatically.', 'success');
+      showToast('\ud83d\udd17 Link copied.', 'success');
     }).catch(() => {
       showToast('\u2705 Cloud-Synced Link generated in the box.', 'info');
     });
@@ -7124,7 +7627,7 @@ function exportCloudConfigFile() {
     a.click();
     document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(url), 1500);
-    showToast('\ud83d\udcc1 cloud-config.json saved! Place it in your TEEM folder so any new install or Netlify upload auto-syncs.', 'success');
+    showToast('\ud83d\udcc1 cloud-config.json saved.', 'success');
   } catch (e) {
     showToast('\u26a0\ufe0f Unable to download cloud-config.json here.', 'error');
   }
@@ -7708,7 +8211,7 @@ function copyGoogleAppsScriptCode() {
   const code = pre.textContent || pre.innerText || '';
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(code).then(() => {
-      showToast('\ud83d\udccb Google Apps Script Web App code copied to clipboard!', 'success');
+      showToast('\ud83d\udccb Apps Script code copied.', 'success');
     }).catch(() => {
       showToast('\u2139\ufe0f Select and copy the code from the box.', 'info');
     });
@@ -7999,7 +8502,7 @@ async function syncWithSupabaseOnline(snapshotObj, isManual) {
   const url = (s.supabaseUrl || DEFAULT_SUPABASE_URL).trim().replace(/\/+$/, '');
   const key = (s.supabaseAnonKey || DEFAULT_SUPABASE_ANON_KEY).trim();
   if (!url || !key || typeof fetch !== 'function') {
-    if (isManual) showToast('\u26a0\ufe0f Enter your Supabase Project URL and Anon Key first, or click Step-by-Step Setup Guide.', 'warning');
+    if (isManual) showToast('\u26a0\ufe0f Enter the Supabase URL and key first.', 'warning');
     return false;
   }
   if (cloudPushInFlight) {
@@ -8117,14 +8620,14 @@ async function syncWithGoogleDriveOnline(snapshotObj, isManual) {
       }
       return true;
     } catch (err) {
-      if (isManual) showToast('\u26a0\ufe0f Could not reach Google Apps Script Web App URL - check URL and internet connection.', 'error');
+      if (isManual) showToast('\u26a0\ufe0f Cannot reach the Apps Script URL.', 'error');
       return false;
     }
   }
 
   if (!token) {
     if (isManual) {
-      showToast('\u26a0\ufe0f Paste your Google Apps Script Web App URL first (click Setup Guide & Apps Script Code below).', 'warning');
+      showToast('\u26a0\ufe0f Add the Apps Script URL first.', 'warning');
     }
     return false;
   }
@@ -8150,20 +8653,75 @@ async function syncWithGoogleDriveOnline(snapshotObj, isManual) {
       body: body
     });
     if (res && res.ok) {
-      if (isManual) showToast('\u2601\ufe0f Backup uploaded to Google Drive (TEEM_AutoBackup_v1.json).', 'success');
+      if (isManual) showToast('\u2601\ufe0f Backup uploaded to Drive.', 'success');
       return true;
     }
   } catch (e) {}
-  if (isManual) showToast('\u26a0\ufe0f Could not reach Google Drive - verify your Google Apps Script Web App URL.', 'error');
+  if (isManual) showToast('\u26a0\ufe0f Cannot reach Google Drive.', 'error');
   return false;
+}
+
+// ---------------------------------------------------------------------------
+// Pending Google Drive uploads - retried until the copy lands
+// ---------------------------------------------------------------------------
+var PENDING_DRIVE_UPLOADS = [];
+var driveRetryTimer = null;
+
+function queueDriveUpload(payload, fileName, folderPath) {
+  if (PENDING_DRIVE_UPLOADS.length >= 10) PENDING_DRIVE_UPLOADS.shift();
+  PENDING_DRIVE_UPLOADS.push({ payload: payload, fileName: fileName, folderPath: folderPath, attempts: 0 });
+  showToast('\u2601\ufe0f Drive copy queued. It will upload when the link is back.', 'info');
+  scheduleDriveRetry(15000);
+}
+
+function scheduleDriveRetry(delay) {
+  if (driveRetryTimer) return;
+  driveRetryTimer = setTimeout(function () {
+    driveRetryTimer = null;
+    flushDriveUploads();
+  }, delay || 30000);
+}
+
+async function flushDriveUploads() {
+  if (!PENDING_DRIVE_UPLOADS.length) return;
+  const s = (store && store.state && store.state.settings) || {};
+  const url = (s.googleAppsScriptUrl || '').trim();
+  if (!url) return;
+  const still = [];
+  for (let i = 0; i < PENDING_DRIVE_UPLOADS.length; i++) {
+    const job = PENDING_DRIVE_UPLOADS[i];
+    try {
+      await fetch(url, {
+        method: 'POST',
+        mode: 'no-cors',
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify(job.payload)
+      });
+      job.done = true;
+      showToast('\u2601\ufe0f Drive copy uploaded: ' + job.fileName, 'success');
+      if (Array.isArray(store.state.driveRequestQueue)) {
+        const rec = store.state.driveRequestQueue.find(function (r) { return r.fileName === job.fileName; });
+        if (rec) rec.status = 'Saved to Google Drive (' + job.folderPath + ')';
+      }
+    } catch (e) {
+      job.attempts += 1;
+      if (job.attempts < 20) still.push(job);
+    }
+  }
+  PENDING_DRIVE_UPLOADS = still;
+  if (typeof store.save === 'function') store.save();
+  if (still.length) scheduleDriveRetry(60000);
 }
 
 async function syncPrintedRequestToGoogleDrive(spec, pdfResult, customFilename) {
   if (!spec || (spec.kind !== 'request' && spec.kind !== 'monthly')) return null;
   const s = (store && store.state && store.state.settings) || {};
-  const rootFolder = (s.googleDriveRootFolder || GDRIVE_ROOT_FOLDER_DEFAULT).trim() || GDRIVE_ROOT_FOLDER_DEFAULT;
+  // The folder pair comes from Settings > Save locations, so a request filed
+  // under Medical lands in the folder the user chose for Medical.
   const isMonthly = spec.kind === 'monthly';
-  const categoryFolder = isMonthly ? 'Monthly Reports' : (spec.category || activeRequestCategory || 'Commercial');
+  const chosen = driveFolderFor(spec.category || activeRequestCategory, isMonthly ? 'monthly' : 'request');
+  const rootFolder = chosen.rootFolder;
+  const categoryFolder = chosen.categoryFolder;
   const folderPath = rootFolder + '/' + categoryFolder;
   const safeCat = categoryFolder.replace(/\s+/g, '_');
   const fileName = customFilename || (pdfResult && pdfResult.filename) || ('TEEM_' + safeCat + '_' + (isMonthly ? 'Report_' : 'Request_') + currentUsageDateIso() + '.pdf');
@@ -8191,34 +8749,44 @@ async function syncPrintedRequestToGoogleDrive(spec, pdfResult, customFilename) 
   };
 
   const webappUrl = (s.googleAppsScriptUrl || '').trim();
+  const payload = {
+    action: isMonthly ? 'save_monthly_report' : 'save_request',
+    rootFolder: rootFolder,
+    categoryFolder: categoryFolder,
+    allCategoryFolders: GDRIVE_SECTOR_FOLDERS.concat(['Monthly Reports']),
+    fileName: fileName,
+    mimeType: 'application/pdf',
+    pdfBase64: pdfBase64,
+    requestMeta: {
+      category: categoryFolder,
+      month: spec.month || spec.period,
+      date: spec.date || currentUsageDateIso(),
+      total: spec.total || spec.totalRevenue || 0,
+      rowsCount: (spec.rows || []).length
+    }
+  };
+
+  let sent = false;
   if (webappUrl && typeof fetch === 'function') {
     try {
       await fetch(webappUrl, {
         method: 'POST',
         mode: 'no-cors',
         headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-        body: JSON.stringify({
-          action: isMonthly ? 'save_monthly_report' : 'save_request',
-          rootFolder: rootFolder,
-          categoryFolder: categoryFolder,
-          allCategoryFolders: GDRIVE_SECTOR_FOLDERS.concat(['Monthly Reports']),
-          fileName: fileName,
-          mimeType: 'application/pdf',
-          pdfBase64: pdfBase64,
-          requestMeta: {
-            category: categoryFolder,
-            month: spec.month || spec.period,
-            date: spec.date || currentUsageDateIso(),
-            total: spec.total || spec.totalRevenue || 0,
-            rowsCount: (spec.rows || []).length
-          }
-        })
+        body: JSON.stringify(payload)
       });
       uploadRecord.status = 'Saved to Google Drive (' + folderPath + ')';
       showToast('\u2601\ufe0f Saved to Google Drive: ' + folderPath + '/' + fileName, 'success');
+      sent = true;
     } catch (err) {
       uploadRecord.status = 'Pending online sync (' + folderPath + ')';
     }
+  }
+
+  // Held in memory and retried until it lands, so a dropped connection or a
+  // Drive blip does not lose the copy.
+  if (!sent) {
+    queueDriveUpload(payload, fileName, folderPath);
   }
   store.state.driveRequestQueue.unshift(uploadRecord);
   if (store.state.driveRequestQueue.length > 50) {
@@ -8243,7 +8811,7 @@ function connectGoogleDrive() {
 async function pullLatestCloudDataManual() {
   saveArchiveSettings();
   if (!hasCloudSyncConfigured()) {
-    showToast('\u2139\ufe0f Configure cloud/config.js or enter your Supabase / Google Apps Script URL above first.', 'info');
+    showToast('\u2139\ufe0f Add a cloud URL first.', 'info');
     return false;
   }
 
@@ -8283,7 +8851,7 @@ async function pullLatestCloudDataManual() {
         after.facilities + ' facilities, ' + after.payments + ' payment records).', 'info');
     }
   } else {
-    showToast('\u26a0\ufe0f Could not reach the cloud. Check your internet connection and try again.', 'warning');
+    showToast('\u26a0\ufe0f No connection. Try again.', 'warning');
   }
   return ok;
 }
@@ -8291,7 +8859,7 @@ async function pullLatestCloudDataManual() {
 async function pushLocalDataToCloudManual() {
   saveArchiveSettings();
   if (!hasCloudSyncConfigured()) {
-    showToast('\u2139\ufe0f Configure cloud/config.js or enter your Supabase / Google Apps Script URL above first.', 'info');
+    showToast('\u2139\ufe0f Add a cloud URL first.', 'info');
     return false;
   }
   const snapshot = buildBackupSnapshot('manual-push');
@@ -8510,11 +9078,18 @@ function downloadFullBackupFile() {
   try {
     if (window.TEEM_ANDROID_FS && typeof window.TEEM_ANDROID_FS.saveBase64File === 'function') {
       const b64 = btoa(unescape(encodeURIComponent(json)));
-      const savedPath = window.TEEM_ANDROID_FS.saveBase64File(fileName, b64, 'application/json');
+      const savedPath = window.TEEM_ANDROID_FS.saveBase64File(fileName, b64, 'application/json', (typeof deviceFolderFor === 'function' ? deviceFolderFor(null, 'backup') : ''));
       if (savedPath && String(savedPath).indexOf('ERROR:') !== 0) {
         showToast('\ud83d\udcc1 Backup saved to File Manager: ' + savedPath, 'success');
         return;
       }
+    }
+    if (TEEM_FS_READY && teemFsSupported()) {
+      const locs = getSaveLocations();
+      teemFsWrite('backup', fileName, new Blob([json], { type: 'application/json' }), 'application/json', locs.folders.backup)
+        .then(function (path) { if (path) { showToast('\ud83d\udcc1 Backup saved to ' + path, 'success'); } })
+        .catch(function () {});
+      return;
     }
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
@@ -9304,7 +9879,7 @@ var docPreviewContext = null;   // window-visible so tooling can inspect the liv
 
 function docPreviewSettings() {
   if (!store.state.settings) store.state.settings = {};
-  if (!store.state.settings.pdfFontSize) store.state.settings.pdfFontSize = 10.5;
+  if (!store.state.settings.pdfFontSize) store.state.settings.pdfFontSize = 11;
   if (store.state.settings.pdfAutoFit === undefined) store.state.settings.pdfAutoFit = true;
   if (!store.state.settings.pdfMargins) store.state.settings.pdfMargins = 'tight';
   if (store.state.settings.pdfLetterhead === undefined) store.state.settings.pdfLetterhead = true;
@@ -9412,7 +9987,7 @@ function openDocPreview(kind, opts) {
 
   const ctx = currentDocSpecBuilder();
   if (!ctx) {
-    showToast('\u2139\ufe0f Open the document first, then press Preview & Font Settings.', 'info');
+    showToast('\u2139\ufe0f Open a document first.', 'info');
     closeModal('modal-doc-preview');
     return;
   }
@@ -9797,6 +10372,8 @@ function enforceCurrentVersionStamp() {
 
 function bootTeem() {
   enforceCurrentVersionStamp();
+  try { if (typeof window !== 'undefined') { window.addEventListener('online', function () { scheduleDriveRetry(1500); }); } } catch (e) {}
+  try { teemFsInit(); } catch (e) {}
   if (window.TEEM_ANDROID_FS && typeof window.TEEM_ANDROID_FS.ensureFolder === 'function') {
     try { window.TEEM_ANDROID_FS.ensureFolder(); } catch (e) {}
   }
@@ -9865,22 +10442,29 @@ const MM_PER_INCH = 25.4;
 // Margins are deliberately small so a document that spills by only a few rows
 // is pulled back onto the current sheet instead of creating a nearly empty one.
 // "minimal" is 0.1 inch (2.5 mm) on every side.
+// A4 is 210 x 297 mm. Left and right margin are 0.5 inch (12.7 mm) in every
+// layout, which is the printable standard on office printers. The three
+// layouts differ only in how tight the vertical packing is.
+// Table text uses 1.15 line spacing, so a wrapped row costs 15% less height
+// than the old 1.25 setting while staying fully legible.
+const PDF_STD_MARGIN_X = 0.5 * MM_PER_INCH;   // 12.7 mm
+
 const PDF_LAYOUTS = {
   standard: {
-    marginX: 16, page1Top: 38, contTop: 26, footerTop: 280,
-    headerRule: 30, tableFont: 10.5, tableHeadFont: 8.4, rowPadY: 1.6, padX: 1.6
+    marginX: PDF_STD_MARGIN_X, page1Top: 35, contTop: 14, footerTop: 287,
+    headerRule: 30, tableFont: 10.5, tableHeadFont: 8.6, rowPadY: 0.6, padX: 1.4, lineSpacing: 1.15
   },
   tight: {
-    marginX: 9, page1Top: 35, contTop: 15, footerTop: 286,
-    headerRule: 28.5, tableFont: 10.2, tableHeadFont: 8.1, rowPadY: 1.3, padX: 1.4
+    marginX: PDF_STD_MARGIN_X, page1Top: 34, contTop: 11, footerTop: 288,
+    headerRule: 28.5, tableFont: 10.5, tableHeadFont: 8.4, rowPadY: 0.45, padX: 1.35, lineSpacing: 1.15
   },
   minimal: {
-    marginX: 2.54, page1Top: 33, contTop: 8.5, footerTop: 288,
-    headerRule: 26.5, tableFont: 10, tableHeadFont: 8, rowPadY: 1.1, padX: 1.2
+    marginX: PDF_STD_MARGIN_X, page1Top: 32, contTop: 9, footerTop: 289,
+    headerRule: 26.5, tableFont: 10.5, tableHeadFont: 8.2, rowPadY: 0.35, padX: 1.3, lineSpacing: 1.15
   }
 };
 
-const PDF_MARGIN_NAMES = { standard: 'Standard', tight: 'Tight', minimal: 'Minimal' };
+const PDF_MARGIN_NAMES = { standard: 'Standard (0.5 in)', tight: 'Compact', minimal: 'Dense' };
 
 let PDF_MARGIN_X = PDF_LAYOUTS.tight.marginX;
 let PDF_HEADER_BOTTOM = PDF_LAYOUTS.tight.headerRule;
@@ -10124,7 +10708,20 @@ PdfDoc.prototype.table = function (columns, rows, options) {
   const headSize = (options.headSize || this.layout.tableHeadFont) * Math.max(this.fontScale, 0.9);
   const padX = this.layout.padX;
   const padY = options.padY || this.layout.rowPadY;
-  const lineHeight = (fontSize * 0.3528) * 1.25;
+  const lineSpacing = options.lineSpacing || this.layout.lineSpacing || 1.15;
+  const lineHeight = (fontSize * PDF_PT2MM) * lineSpacing;
+  // Height kept free at the foot of the last page for the closing block.
+  const reserve = options.reserveBottom || 0;
+
+  // Stretch the declared column widths to the printable width so no paper is
+  // wasted at the right edge, whatever margin the layout uses.
+  const declared = columns.reduce((sum, col) => sum + col.width, 0);
+  if (options.fitWidth !== false && declared > 40 && Math.abs(declared - PDF_CONTENT_W) > 1.5) {
+    const grow = PDF_CONTENT_W / declared;
+    columns = columns.map(col => Object.assign({}, col, { width: col.width * grow }));
+  }
+
+  let headerHeight = 0;
 
   const drawHeader = () => {
     this.doc.setFont('times', 'bold');
@@ -10132,7 +10729,8 @@ PdfDoc.prototype.table = function (columns, rows, options) {
     // wrap long labels so nothing ever collides with the next column
     const headerCells = columns.map(col => this.doc.splitTextToSize(String(col.label), col.width - (padX * 2)));
     const headerLines = Math.max.apply(null, headerCells.map(c => c.length).concat([1]));
-    const h = (headerLines * ((headSize * 0.3528) * 1.22)) + 4.6;
+    const h = (headerLines * ((headSize * PDF_PT2MM) * 1.15)) + 3.0;
+    headerHeight = h;
 
     this.doc.setFillColor(238, 238, 234);
     this.doc.rect(PDF_MARGIN_X, this.y, PDF_CONTENT_W, h, 'F');
@@ -10146,7 +10744,7 @@ PdfDoc.prototype.table = function (columns, rows, options) {
         let tx = x + padX;
         if (align === 'right') tx = x + col.width - padX;
         if (align === 'center') tx = x + (col.width / 2);
-        this.doc.text(line, tx, this.y + 3.4 + ((li + 1) * ((headSize * 0.3528) * 1.22)) - ((headSize * 0.3528) * 0.3), { align: align });
+        this.doc.text(line, tx, this.y + 2.8 + ((li + 1) * ((headSize * PDF_PT2MM) * 1.15)) - ((headSize * PDF_PT2MM) * 0.3), { align: align });
       });
       x += columns[i].width;
     });
@@ -10158,28 +10756,47 @@ PdfDoc.prototype.table = function (columns, rows, options) {
     this.doc.setLineWidth(0.2);
   };
 
-  drawHeader();
-
-  rows.forEach((row, rowIndex) => {
-    this.doc.setFont('times', 'normal');
-    this.doc.setFontSize(fontSize);
-
+  // Measure every row once: the heights drive both the page breaks and the
+  // "keep the closing block on the same sheet" decision.
+  this.doc.setFont('times', 'normal');
+  this.doc.setFontSize(fontSize);
+  const measured = rows.map(row => {
     const cells = columns.map((col, i) => {
       const value = row[i] === undefined || row[i] === null ? '' : String(row[i]);
       return this.doc.splitTextToSize(value, col.width - (padX * 2));
     });
     const maxLines = Math.max.apply(null, cells.map(c => c.length).concat([1]));
-    const rowHeight = (maxLines * lineHeight) + (padY * 2);
+    return { cells: cells, height: (maxLines * lineHeight) + (padY * 2) };
+  });
+  const restAfter = new Array(measured.length + 1).fill(0);
+  for (let i = measured.length - 1; i >= 0; i--) restAfter[i] = restAfter[i + 1] + measured[i].height;
 
-    if (this.y + rowHeight > PDF_FOOTER_TOP - 4) {
+  drawHeader();
+  const bodyLimit = PDF_FOOTER_TOP - 4;
+
+  measured.forEach((m, rowIndex) => {
+    const rowHeight = m.height;
+
+    if (this.y + rowHeight > bodyLimit) {
       this.newPage();
       drawHeader();
-      this.doc.setFont('times', 'normal');
-      this.doc.setFontSize(fontSize);
+    } else if (reserve > 0 && rowIndex > 0) {
+      const rest = restAfter[rowIndex];
+      const fitsHere = (this.y + rest + reserve) <= bodyLimit;
+      const fitsFresh = (this.layout.contTop + headerHeight + rest + reserve) <= bodyLimit;
+      // Move the tail onto a fresh sheet only when it cannot finish here but
+      // can finish there together with the closing block.
+      if (!fitsHere && fitsFresh) {
+        this.newPage();
+        drawHeader();
+      }
     }
 
+    this.doc.setFont('times', 'normal');
+    this.doc.setFontSize(fontSize);
+
     let x = PDF_MARGIN_X;
-    cells.forEach((lines, i) => {
+    m.cells.forEach((lines, i) => {
       const col = columns[i];
       const align = col.align || 'left';
       let tx = x + padX;
@@ -10285,22 +10902,62 @@ PdfDoc.prototype.finalize = function (options) {
   return this.doc;
 };
 
+var PDF_SAVE_FOLDER = '';
+var PDF_SAVE_KEY = 'commercial';
+var PDF_SAVE_SUB = '';
+function setPdfSaveFolder(category, docType) {
+  try {
+    PDF_SAVE_KEY = saveLocationKeyFor(category, docType);
+    PDF_SAVE_FOLDER = deviceFolderFor(category, docType);
+    var locs = getSaveLocations();
+    PDF_SAVE_SUB = locs.folders[PDF_SAVE_KEY] || '';
+  } catch (e) { PDF_SAVE_FOLDER = ''; }
+  return PDF_SAVE_FOLDER;
+}
+
 function savePdfDocToDevice(jsPdfDoc, filename, origSaveFn) {
   const safeName = (filename || 'TEEM_Document.pdf').replace(/[^A-Za-z0-9._-]+/g, '_');
+  const targetFolder = PDF_SAVE_FOLDER || '';
   if (window.TEEM_ANDROID_FS && typeof window.TEEM_ANDROID_FS.saveBase64File === 'function') {
     try {
       const dataUri = jsPdfDoc.output('datauristring');
-      const savedPath = window.TEEM_ANDROID_FS.saveBase64File(safeName, dataUri, 'application/pdf');
+      const savedPath = window.TEEM_ANDROID_FS.saveBase64File(safeName, dataUri, 'application/pdf', targetFolder);
       if (savedPath && String(savedPath).indexOf('ERROR:') !== 0) {
         showToast('\ud83d\udcc1 Saved to File Manager: ' + savedPath, 'success');
         return savedPath;
       }
     } catch (err) {}
   }
+  // A folder the user picked in Settings is written to directly.
+  if (TEEM_FS_READY && teemFsSupported()) {
+    try {
+      const dataUri = jsPdfDoc.output('datauristring');
+      teemFsWrite(PDF_SAVE_KEY, safeName, dataUri, 'application/pdf', PDF_SAVE_SUB)
+        .then(function (path) {
+          if (path) showToast('\ud83d\udcc1 Saved to ' + path, 'success');
+          else if (typeof origSaveFn === 'function') origSaveFn(safeName);
+        })
+        .catch(function () {
+          if (typeof origSaveFn === 'function') origSaveFn(safeName);
+        });
+      return safeName;
+    } catch (e) { /* fall through to download */ }
+  }
   if (typeof origSaveFn === 'function') {
     origSaveFn(safeName);
   }
   return safeName;
+}
+
+var TEEM_FS_READY = false;
+function teemFsInit() {
+  if (!teemFsSupported()) { TEEM_FS_READY = false; return; }
+  Promise.all([teemFsGetHandle('__base__')].concat(
+    SAVE_LOCATION_TYPES.map(function (t) { return teemFsGetHandle(t.key); })
+  )).then(function (list) {
+    TEEM_FS_READY = list.some(function (x) { return !!x; });
+    teemFsRefreshLabels();
+  }).catch(function () { TEEM_FS_READY = false; });
 }
 
 PdfDoc.prototype.save = function (filename) {
@@ -10341,6 +10998,22 @@ function pdfStamp(heading, subheading, reference) {
 // A. REQUEST LETTER (Commercial / Industrial / Medical / Institutional /
 //    Agricultural / Construction / Municipal Residential)
 // ---------------------------------------------------------------------------
+// Everything from the closing statement down to the signature. Called twice per
+// build: once on a scratch page to measure it, once on the real page to draw it.
+function drawRequestClosing(doc, spec) {
+  doc.text(spec.statement, { size: 11.5, align: 'left' });
+  doc.gap(4);
+  doc.text('Many thanks in anticipation of your favorable response in this regard.', { size: 11.5 });
+  doc.gap(5);
+  doc.text('Yours faithfully,', { style: 'italic', size: 11.5 });
+  doc.text('For: Teem Business Nigeria Enterprises', { style: 'italic', size: 11.5 });
+  doc.gap(2);
+  doc.signaturePage = doc.page;
+  if (TEEM_IMG.signature) doc.image(TEEM_IMG.signature, 40, 13, { gap: 1 });
+  doc.text('Mojisola R. Ajibade', { style: 'bold', size: 12 });
+  doc.text('Managing Director', { style: 'italic', size: 11 });
+}
+
 function buildRequestPdf(spec, options) {
   options = options || {};
   const doc = new PdfDoc({
@@ -10381,49 +11054,52 @@ function buildRequestPdf(spec, options) {
   const showGenWaste = spec.showGenWaste === true;
 
   // Every variant below adds up to the same 174 mm the table has always used.
+  // Column widths come from the measured width of the widest value each
+  // column has to hold at 11 pt, so a name wraps at most twice and the month,
+  // date and amount never wrap at all. That is what keeps a long request short.
   let columns;
   if (showGenWaste && showOutlet && showMonth) {
     // Medical: the general waste share sits between the amount paid and the date.
     columns = [
-      { label: 'S/N', width: 9, align: 'center' },
-      { label: spec.column, width: 38 },
-      { label: 'DEPOSITORS NAME', width: 34 },
+      { label: 'S/N', width: 7, align: 'center' },
+      { label: spec.column, width: 40 },
+      { label: 'DEPOSITORS NAME', width: 42 },
       { label: 'AMOUNT', width: 20, align: 'right' },
-      { label: 'GEN. WASTE', width: 23, align: 'right' },
-      { label: 'DATE OF PAYMENT', width: 26, align: 'center' },
-      { label: 'MONTH', width: 24, align: 'center' }
+      { label: 'GEN. WASTE', width: 20, align: 'right' },
+      { label: 'DATE OF PAYMENT', width: 20, align: 'center' },
+      { label: 'MONTH', width: 29, align: 'center' }
     ];
   } else if (showOutlet && showMonth) {
     columns = [
-      { label: 'S/N', width: 11, align: 'center' },
-      { label: spec.column, width: 45 },
-      { label: 'DEPOSITORS NAME', width: 42 },
-      { label: 'AMOUNT', width: 22, align: 'right' },
-      { label: 'DATE OF PAYMENT', width: 28, align: 'center' },
-      { label: 'MONTH', width: 26, align: 'center' }
+      { label: 'S/N', width: 8, align: 'center' },
+      { label: spec.column, width: 46 },
+      { label: 'DEPOSITORS NAME', width: 56 },
+      { label: 'AMOUNT', width: 23, align: 'right' },
+      { label: 'DATE OF PAYMENT', width: 21, align: 'center' },
+      { label: 'MONTH', width: 29, align: 'center' }
     ];
   } else if (!showOutlet && showMonth) {
     columns = [
-      { label: 'S/N', width: 13, align: 'center' },
-      { label: 'DEPOSITORS NAME', width: 71 },
-      { label: 'AMOUNT', width: 26, align: 'right' },
-      { label: 'DATE OF PAYMENT', width: 32, align: 'center' },
-      { label: 'MONTH', width: 32, align: 'center' }
+      { label: 'S/N', width: 8, align: 'center' },
+      { label: 'DEPOSITORS NAME', width: 95 },
+      { label: 'AMOUNT', width: 23, align: 'right' },
+      { label: 'DATE OF PAYMENT', width: 21, align: 'center' },
+      { label: 'MONTH', width: 29, align: 'center' }
     ];
   } else if (!showOutlet && !showMonth) {
     columns = [
-      { label: 'S/N', width: 14, align: 'center' },
-      { label: 'DEPOSITORS NAME', width: 94 },
-      { label: 'AMOUNT', width: 30, align: 'right' },
-      { label: 'DATE OF PAYMENT', width: 36, align: 'center' }
+      { label: 'S/N', width: 8, align: 'center' },
+      { label: 'DEPOSITORS NAME', width: 118 },
+      { label: 'AMOUNT', width: 24, align: 'right' },
+      { label: 'DATE OF PAYMENT', width: 22, align: 'center' }
     ];
   } else {
     columns = [
-      { label: 'S/N', width: 12, align: 'center' },
-      { label: spec.column, width: 60 },
-      { label: 'DEPOSITORS NAME', width: 50 },
-      { label: 'AMOUNT', width: 24, align: 'right' },
-      { label: 'DATE OF PAYMENT', width: 28, align: 'center' }
+      { label: 'S/N', width: 8, align: 'center' },
+      { label: spec.column, width: 72 },
+      { label: 'DEPOSITORS NAME', width: 62 },
+      { label: 'AMOUNT', width: 23, align: 'right' },
+      { label: 'DATE OF PAYMENT', width: 21, align: 'center' }
     ];
   }
 
@@ -10461,26 +11137,24 @@ function buildRequestPdf(spec, options) {
   rows.push(totalRow('Total', spec.total));
   if (spec.rebate) rows.push(totalRow(spec.rebate + '%', spec.rebateValue));
 
-  doc.table(columns, rows, { fontSize: 10.5, headSize: 8.4, gap: 6 });
+  doc.table(columns, rows, { gap: 4 });
 
-  // The statement, the thanks line and the whole undersign block are reserved
-  // as ONE unit. Because the fitting search calls this builder repeatedly, the
-  // block always lands on the same page: a slightly smaller font simply fits
-  // it under the totals instead of pushing it onto a sheet of its own.
+  // The statement, the thanks line and the whole undersign block travel as ONE
+  // unit. Its exact height is measured on a throwaway document first, so the
+  // reservation is neither too big (which strands the table short) nor too
+  // small (which pushes the block onto a sheet of its own).
+  const probe = new PdfDoc({
+    reference: spec.reference, heading: '', subheading: '',
+    layout: options.layout, fontScale: options.fontScale
+  });
+  probe.includeLetterhead = false;
+  probe.y = 0;
+  drawRequestClosing(probe, spec);
+  const closingHeight = probe.y;
+
   doc.pageAnchor(doc.y);
-  doc.keep(78);
-  doc.text(spec.statement, { size: 11.5, align: 'left' });
-  doc.gap(4);
-  doc.text('Many thanks in anticipation of your favorable response in this regard.', { size: 11.5 });
-  doc.gap(5);
-
-  doc.text('Yours faithfully,', { style: 'italic', size: 11.5 });
-  doc.text('For: Teem Business Nigeria Enterprises', { style: 'italic', size: 11.5 });
-  doc.gap(2);
-  doc.signaturePage = doc.page;
-  if (TEEM_IMG.signature) doc.image(TEEM_IMG.signature, 42, 15, { gap: 1 });
-  doc.text('Mojisola R. Ajibade', { style: 'bold', size: 12 });
-  doc.text('Managing Director', { style: 'italic', size: 11 });
+  doc.keep(closingHeight / (doc.fontScale || 1));
+  drawRequestClosing(doc, spec);
 
   const filename = spec.filename || ('TEEM_' + spec.category.replace(/\s+/g, '_') + '_Request_' + spec.reference + '.pdf');
   const finalDoc = doc.finalize({ title: spec.subject });
@@ -10767,6 +11441,7 @@ function requestSpec() {
     showGenWaste: meta.generalWaste === true,
     total: total,
     rebateValue: rebateValue,
+    rowIds: data.selected.map(p => p.id),
     statement: meta.rebate
       ? 'The ' + meta.rebate + '% shall be N' + Number(rebateValue).toLocaleString('en-NG') + ' (' + numberToWords(rebateValue) + ') only.'
       : 'The total sum of N' + Number(total).toLocaleString('en-NG') + ' (' + numberToWords(total) + ') only.'
@@ -10856,7 +11531,7 @@ function auditSpec() {
 // the preview window and archive re-downloads.
 function renderPdfForContext(spec, builder, settings) {
   settings = settings || {};
-  const baseFont = settings.pdfFontSize || 10.5;
+  const baseFont = settings.pdfFontSize || 11;
   const autoFit = settings.pdfAutoFit !== false;
   const layoutName = settings.pdfMargins && PDF_LAYOUTS[settings.pdfMargins] ? settings.pdfMargins : 'tight';
 
@@ -10904,11 +11579,30 @@ function renderPdfFitted(spec, builder, options) {
   return result;
 }
 
+function specCategoryOf(spec) {
+  if (!spec) return null;
+  if (spec.kind === 'request') return spec.category || activeRequestCategory;
+  if (spec.facility) return spec.facility.category || null;
+  if (spec.street) return 'Municipal';
+  return null;
+}
+
+function specDriveFolderPath(spec) {
+  if (!spec) return '';
+  try {
+    var f = driveFolderFor(specCategoryOf(spec), spec.kind);
+    return f.rootFolder + '/' + f.categoryFolder;
+  } catch (e) {
+    return '';
+  }
+}
+
 function archiveAndRender(spec, builder, title, total, filename) {
   if (!teemPdfAvailable()) {
     showToast('\u26a0\ufe0f The PDF engine is not loaded in this copy.', 'error');
     return;
   }
+  setPdfSaveFolder(specCategoryOf(spec), spec.kind);
   const result = renderPdfFitted(spec, builder);
   const entry = archiveDocument({
     type: title,
@@ -10918,10 +11612,16 @@ function archiveAndRender(spec, builder, title, total, filename) {
     total: total || spec.total || 0,
     pages: result.pages,
     filename: filename || result.filename,
-    driveFolderPath: spec.kind === 'request' ? ((store.state.settings && store.state.settings.googleDriveRootFolder) || GDRIVE_ROOT_FOLDER_DEFAULT) + '/' + (spec.category || activeRequestCategory) : ''
+    driveFolderPath: specDriveFolderPath(spec)
   });
   if (spec && (spec.kind === 'request' || spec.kind === 'monthly')) {
     syncPrintedRequestToGoogleDrive(spec, result, entry ? entry.filename : (filename || result.filename));
+  }
+  if (spec && spec.kind === 'request') {
+    try {
+      recordRequestHistory(spec, entry ? entry.filename : (filename || result.filename), entry ? entry.id : '');
+      markRequestRowsDone(spec);
+    } catch (e) { console.warn('request history', e); }
   }
   result.doc.save(entry ? entry.filename : (filename || result.filename));
   showToast('\ud83d\udcc4 ' + title + ' exported (' + result.pages + ' page' + (result.pages === 1 ? '' : 's') + ') and archived.', 'success');
@@ -10929,6 +11629,7 @@ function archiveAndRender(spec, builder, title, total, filename) {
 
 // Save / print exactly what the preview window is showing
 function savePdfResult(result, title, spec, filename) {
+  if (spec) setPdfSaveFolder(specCategoryOf(spec), spec.kind);
   const entry = archiveDocument({
     type: title,
     title: title + (spec && spec.facility ? ' - ' + spec.facility.name : spec && spec.street ? ' - ' + spec.street.name : ''),
@@ -10937,10 +11638,16 @@ function savePdfResult(result, title, spec, filename) {
     total: (spec && (spec.total || 0)) || 0,
     pages: result.pages,
     filename: filename || result.filename,
-    driveFolderPath: (spec && (spec.kind === 'request' || spec.kind === 'monthly')) ? ((store.state.settings && store.state.settings.googleDriveRootFolder) || GDRIVE_ROOT_FOLDER_DEFAULT) + '/' + (spec.kind === 'monthly' ? 'Monthly Reports' : (spec.category || activeRequestCategory)) : ''
+    driveFolderPath: spec ? specDriveFolderPath(spec) : ''
   });
   if (spec && (spec.kind === 'request' || spec.kind === 'monthly')) {
     syncPrintedRequestToGoogleDrive(spec, result, entry ? entry.filename : (filename || result.filename));
+  }
+  if (spec && spec.kind === 'request') {
+    try {
+      recordRequestHistory(spec, entry ? entry.filename : (filename || result.filename), entry ? entry.id : '');
+      markRequestRowsDone(spec);
+    } catch (e) { console.warn('request history', e); }
   }
   result.doc.save(entry ? entry.filename : (filename || result.filename || 'TEEM_Document.pdf'));
   showToast('\ud83d\udcc4 ' + title + ' saved (' + result.pages + ' page' + (result.pages === 1 ? '' : 's') + ') and archived.', 'success');
@@ -10949,7 +11656,7 @@ function savePdfResult(result, title, spec, filename) {
 function exportRequestLetter() {
   const spec = requestSpec();
   if (!spec.rows.length) {
-    showToast('\u26a0\ufe0f Tick at least one payment entry before finishing the request.', 'error');
+    showToast('\u26a0\ufe0f Select at least one entry.', 'error');
     return;
   }
   archiveAndRender(spec, buildRequestPdf, spec.category + ' Service Request Letter', spec.total);
@@ -10974,7 +11681,7 @@ function exportComplianceAudit() {
 function printRequestLetter() {
   const spec = requestSpec();
   if (!spec.rows.length) {
-    showToast('\u26a0\ufe0f Tick at least one payment entry before printing the request.', 'error');
+    showToast('\u26a0\ufe0f Select at least one entry.', 'error');
     return;
   }
   openDocPreview('request', { collapseSettings: true });

@@ -49,7 +49,7 @@
       } catch (e) {}
     })();
   </script>
-  <title>TEEM Waste Management System v1 - PSP Concession Portal</title>
+  <title>TEEM Portal</title>
   <link rel="stylesheet" href="style.css">
   <link rel="icon" href="assets/teem_logo_standalone.png" type="image/png">
   <link rel="apple-touch-icon" href="assets/icon-192.png">
@@ -312,7 +312,7 @@
                 <button class="btn btn-sm btn-primary" onclick="locateMe()">&#128205; Locate Me</button>
               </span>
               <button class="btn btn-sm btn-outline gps-disable-toggle-btn" id="gps-toggle-map-btn" onclick="toggleGpsMapDisabled()" title="Collapse or disable the GPS map">
-                &#128315; Collapse / Disable GPS Map
+                &#128315; Hide GPS map
               </button>
             </div>
           </div>
@@ -364,12 +364,12 @@
             <img src="assets/teem_logo_standalone.png" alt="Teem Business Nigeria Enterprises" class="company-logo">
             <div>
               <h3>TEEM BUSINESS NIGERIA ENTERPRISES</h3>
-              <span class="company-reg">Registered Contractor RC OG20434 &bull; Private Sector Participation (PSP) Concessionaire</span>
+              <span class="company-reg">Registered contractor &bull; RC OG20434</span>
               <span class="company-contact" id="company-contact-line">Address: Praise Tower, opp. Dimmo Stores, Omida, Ibara, Abeokuta, Ogun State. Tel: 07034962112, 07048269980 | Email: teembusnigent@gmail.com</span>
             </div>
           </div>
           <p class="company-lead">
-            <strong>Teem Business Nigeria Enterprises (RC OG20434)</strong> is an accredited private sector waste management operator and an environmental consulting firm that has been operating for almost two decades, licensed to provide house-to-house and commercial waste collection, haulage, evacuation, disposal, and professional environmental consultancy services within the Ogun State Waste Management Authority (OGWAMA) concession area. The company serves commercial outlets, industrial plants, medical facilities, institutional clients, agricultural and construction waste generators, together with municipal residential streets. Through our Registered Fleet &amp; Logistics of compactors, open haulage trucks, and PSP support vehicles dispatched on verifiable routes, we deliver Verified Evacuations where every route is logged with the date, vehicle used, and the supervisor in charge. Guided by Environmental Responsibility, recoverable materials are sorted and diverted back into the circular economy, while Transparent Revenue administration ensures all payments are reconciled into the authorised OGWAMA Sterling Bank Account 0079828285.
+            <strong>Teem Business Nigeria Enterprises (RC OG20434)</strong> is a waste management operator serving Abeokuta and Ogun State.
           </p>
         </div>
       </section>
@@ -475,7 +475,7 @@
         <div class="data-card" style="padding:20px;">
           <div class="card-header-bar" style="padding:0 0 16px 0;border:none;">
             <div>
-              <span class="card-title">&#128202; WEEKLY &amp; MONTHLY EVACUATION COMPLIANCE EXTRACTION</span>
+              <span class="card-title">&#128202; EVACUATION COMPLIANCE</span>
               <p style="font-size:12.5px;color:var(--text-muted);margin-top:2px;">Active period: <strong id="audit-active-period">Month of October 2026</strong></p>
             </div>
             <div style="display:flex;gap:10px;flex-wrap:wrap;">
@@ -518,7 +518,7 @@
           </div>
 
           <div id="audit-section-evacuated">
-            <h4 class="report-section-title" style="margin-bottom:8px;">&#9989; EVACUATED FACILITIES &amp; STREETS (AUDIT PASS)</h4>
+            <h4 class="report-section-title" style="margin-bottom:8px;">&#9989; EVACUATED FACILITIES &amp; STREETS</h4>
             <div class="data-table-container" style="border:1px solid var(--border-subtle);border-radius:12px;max-height:320px;overflow-y:auto;">
               <table class="data-table">
                 <thead><tr><th>NAME</th><th>SECTOR</th><th>EVACUATION DATE</th><th>VEHICLE USED</th><th>SUPERVISOR LEAD</th><th>STATUS</th></tr></thead>
@@ -528,7 +528,7 @@
           </div>
 
           <div id="audit-section-not" style="margin-top:22px;">
-            <h4 class="report-section-title" style="margin-bottom:8px;color:var(--danger-red);">&#10060; NOT EVACUATED IN SELECTED PERIOD (ACTION REQUIRED)</h4>
+            <h4 class="report-section-title" style="margin-bottom:8px;color:var(--danger-red);">&#10060; NOT EVACUATED IN PERIOD</h4>
             <div class="data-table-container" style="border:1px solid var(--border-subtle);border-radius:12px;max-height:320px;overflow-y:auto;">
               <table class="data-table">
                 <thead><tr><th>NAME</th><th>SECTOR</th><th>LAST RECORDED EVACUATION</th><th>OVERDUE STATUS</th><th>ASSIGNED SUPERVISOR</th><th>ACTION</th></tr></thead>
@@ -599,6 +599,10 @@
               <button class="btn btn-outline" style="flex:1;" onclick="openPreviewForRequest()">&#128269; Preview</button>
               <button class="btn btn-outline desktop-print-only" style="flex:1;" onclick="printRequestLetter()">&#128424; Print</button>
               <button class="btn btn-secondary" style="flex:1;" onclick="exportRequestLetter()">&#128190; Save</button>
+            </div>
+            <div class="req-action-row" style="display:flex;gap:8px;flex-wrap:nowrap;margin-top:8px;">
+              <button class="btn btn-outline" style="flex:1;" onclick="startNewRequest()">&#10133; New request</button>
+              <button class="btn btn-outline" style="flex:1;" onclick="openRequestHistory()">&#128340; History</button>
             </div>
           </div>
 
@@ -870,7 +874,7 @@
             <div class="mr-section-bar">
               <div>
                 <h3 class="mr-section-title">SECTION 1: INDUSTRIAL EVACUATION (VEHICLE USAGE &amp; TRIPS)</h3>
-                <p class="mr-section-note">Allocated amount for vehicle usage is calculated automatically by multiplying <strong>No of Trips &times; Rate per Trip</strong>. Includes TEEM Business industrial evacuations and any external operator/group using a TEEM vehicle.</p>
+                <p class="mr-section-note">Vehicle usage is auto-calculated.<strong>No of Trips &times; Rate per Trip</strong>TEEM and external vehicles.</p>
               </div>
               <div class="action-btn-group admin-only">
                 <button type="button" class="btn btn-sm btn-outline admin-only" onclick="syncMonthlyIndustrialFromLogs()" title="Import logged industrial evacuations for this month">&#128260; Sync Logged Evacuations</button>
@@ -889,7 +893,7 @@
             <div class="mr-section-bar">
               <div>
                 <h3 class="mr-section-title" id="mr-sec2-title">SECTION 2: SALARY SCHEDULE FOR THE MONTH OF OCTOBER, 2026</h3>
-                <p class="mr-section-note">Officer name, bank, account number, and monthly salary amount.</p>
+                <p class="mr-section-note">Officer salary details</p>
               </div>
               <div class="action-btn-group admin-only">
                 <button type="button" class="btn btn-sm btn-primary" onclick="openMonthlySalaryModal()">+ Add Officer Salary</button>
@@ -947,7 +951,7 @@
             <div class="mr-section-bar">
               <div>
                 <h3 class="mr-section-title">SECTION 4: FUEL PURCHASED</h3>
-                <p class="mr-section-note">Date, fuel type (Diesel or Petrol), number of litres, amount per litre, and auto-calculated total.</p>
+                <p class="mr-section-note">Fuel purchases this month</p>
               </div>
               <div class="action-btn-group">
                 <button type="button" class="btn btn-sm btn-primary" onclick="openMonthlyFuelModal()">+ Add Fuel Purchase</button>
@@ -976,7 +980,7 @@
             <div class="mr-section-bar">
               <div>
                 <h3 class="mr-section-title">SECTION 5: VEHICLE REPAIR &amp; MAINTENANCE</h3>
-                <p class="mr-section-note">Record any vehicle repair particulars and cost for the month (shows &#8358;0 when there are no repairs).</p>
+                <p class="mr-section-note">Vehicle repairs this month</p>
               </div>
               <div class="action-btn-group">
                 <button type="button" class="btn btn-sm btn-primary" onclick="openMonthlyRepairModal()">+ Add Vehicle Repair</button>
@@ -1003,7 +1007,7 @@
             <div class="mr-section-bar">
               <div>
                 <h3 class="mr-section-title">SECTION 6: SUMMARY OF EXPENDITURE AND REVENUE</h3>
-                <p class="mr-section-note">Automatically compiled from Sections 1&ndash;5: subtracts Total Expenses (Salary + Fuel Purchased + Vehicle Repair) from Total Revenue (Municipal Evacuation + IGR from Compactor).</p>
+                <p class="mr-section-note">Compiled from Sections 1-5</p>
               </div>
             </div>
             <div class="data-table-container">
@@ -1168,7 +1172,7 @@
                   <input type="file" id="usr-photo-file" class="photo-file-hidden" accept="image/*" onchange="readPhotoFile(this, 'usr-photo-preview')">
                 </div>
                 <div class="admin-quota-wrap">
-                  <div class="admin-quota-note" id="admin-quota-note">Active Administrators: 1 &bull; Unlimited Administrators &amp; Supervisors supported</div>
+                  <div class="admin-quota-note" id="admin-quota-note">Administrators</div>
                   <div class="admin-quota-bar"><span id="admin-quota-fill" style="width:100%"></span></div>
                 </div>
                 <div class="action-btn-group" style="margin-top:4px;">
@@ -1186,7 +1190,7 @@
             </div>
 
             <div class="settings-card" id="archive-card">
-              <h3 class="settings-card-title">&#9729;&#65039; Archive &amp; Cloud Storage (Supabase &amp; Google Apps Script)</h3>
+              <h3 class="settings-card-title">&#9729;&#65039; Archive &amp; Cloud Storage</h3>
               <p class="settings-card-note" id="archive-card-note" style="display:none;"></p>
               <form onsubmit="saveArchiveSettings(event)" class="settings-form">
                 <div class="form-group">
@@ -1228,7 +1232,7 @@
                 <input type="hidden" id="gdrive-access-token" value="">
                 <label class="settings-check">
                   <input type="checkbox" id="archive-autosave" checked>
-                  <span>Automatically save every printed request letter to Google Drive inside <strong>TEEM BUSINESS PORTAL / &lt;Category&gt;</strong></span>
+                  <span>Save printed letters to Google Drive<strong>TEEM BUSINESS PORTAL / &lt;Category&gt;</strong></span>
                 </label>
                 <div class="settings-actions archive-actions-grid">
                   <button type="submit" class="btn btn-primary">&#128190; Save Settings</button>
@@ -1247,7 +1251,7 @@
 
               <div id="cloud-setup-guide-box" class="cloud-setup-guide" style="display:none;margin-top:12px;">
                 <div class="cloud-setup-guide-section">
-                  <h4>&#9729;&#65039; Part A — Google Drive Connect &amp; Two-Way Device Sync via Google Apps Script</h4>
+                  <h4>Google Drive connection</h4>
                   <ol class="cloud-guide-steps">
                     <li>Open <strong>https://script.google.com</strong> and click <strong>New project</strong>.</li>
                     <li>Paste the code below into <code>Code.gs</code>:
@@ -1416,6 +1420,39 @@ create policy "Allow public read/write for TEEM devices"
               </form>
             </div>
 
+            <div class="settings-card" id="save-locations-card">
+              <h3 class="settings-card-title" style="margin-bottom:8px;">&#128193; Save locations</h3>
+              <div class="form-group">
+                <label class="form-label">Device folder (base)</label>
+                <div style="display:flex;gap:8px;align-items:center;">
+                  <input type="text" id="save-device-root" class="form-input" placeholder="Download/TEEM" oninput="onSaveLocationInput()" style="flex:1;">
+                  <button type="button" class="btn btn-outline" style="padding:8px 12px;font-size:12px;" onclick="chooseBaseFolder()">Choose</button>
+                </div>
+                <div id="save-base-picked" style="font-size:11.5px;color:#64748B;margin-top:4px;">No folder chosen</div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Subfolder per document type</label>
+                <div class="save-loc-grid" id="save-loc-grid"></div>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Google Drive root folder</label>
+                <input type="text" id="save-drive-root" class="form-input" placeholder="TEEM BUSINESS PORTAL" oninput="onSaveLocationInput()">
+              </div>
+              <label class="settings-check" style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:10px;">
+                <input type="checkbox" id="save-auto-device" onchange="onSaveLocationInput()">
+                <span>Save a copy on this device</span>
+              </label>
+              <label class="settings-check" style="display:flex;align-items:center;gap:8px;font-size:13px;margin-bottom:12px;">
+                <input type="checkbox" id="save-auto-drive" onchange="onSaveLocationInput()">
+                <span>Save a copy to Google Drive</span>
+              </label>
+              <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                <button type="button" class="btn btn-secondary" style="flex:1;" onclick="saveSaveLocations()">&#10003; Save locations</button>
+                <button type="button" class="btn btn-outline" style="flex:1;" onclick="resetSaveLocations()">Reset</button>
+              </div>
+              <div id="save-loc-preview" style="margin-top:10px;font-size:12px;color:#475569;"></div>
+            </div>
+
             <div class="settings-card" id="backup-restore-card">
               <h3 class="settings-card-title" style="margin-bottom:8px;">&#128190; Backup and restore</h3>
               <div class="backup-last-box" id="auto-backup-status-strip">
@@ -1468,7 +1505,7 @@ create policy "Allow public read/write for TEEM devices"
         <div class="auth-head-row" id="signup-head-row">
           <div>
             <h1 class="signup-title">Create your account</h1>
-            <p class="signup-sub">Register your Supervisor or Administrator profile. Your account is activated immediately and synced across connected devices.</p>
+            <p class="signup-sub">Register a supervisor or administrator.</p>
           </div>
           <span class="auth-version-pill">v16</span>
         </div>
@@ -1551,7 +1588,7 @@ create policy "Allow public read/write for TEEM devices"
 
           <label class="signup-terms">
             <input type="checkbox" id="su-accept" required>
-            <span>I confirm the details above are correct and I will keep my password private.</span>
+            <span>I confirm these details are correct.</span>
           </label>
 
           <div class="signup-error" id="signup-error"></div>
@@ -1565,7 +1602,7 @@ create policy "Allow public read/write for TEEM devices"
         <div class="signup-done" id="signup-done" style="display:none;">
           <div class="signup-done-badge">&#9989;</div>
           <h3>Account Created &amp; Active</h3>
-          <p id="signup-done-text">Your details are stored on this device and synced to the portal.</p>
+          <p id="signup-done-text">Stored on this device and synced.</p>
           <button type="button" class="btn btn-primary signup-done-btn" onclick="hideSignupScreen()">Continue to Sign In &rarr;</button>
         </div>
       </section>
@@ -1591,7 +1628,7 @@ create policy "Allow public read/write for TEEM devices"
           <div class="auth-head-row">
             <div>
               <h1 class="login-title">Sign In</h1>
-              <p class="login-sub">Enter your username and password to access the TEEM Concession Portal.</p>
+              <p class="login-sub">Sign in to continue.</p>
             </div>
             <span class="auth-version-pill">v16</span>
           </div>
@@ -1640,7 +1677,7 @@ create policy "Allow public read/write for TEEM devices"
           <div class="auth-head-row">
             <div>
               <h2 class="login-title">Reset Your Password</h2>
-              <p class="login-sub">Verify your account with your username and registered phone number or email address.</p>
+              <p class="login-sub">Verify your account.</p>
             </div>
             <span class="auth-version-pill">v16</span>
           </div>
@@ -1759,7 +1796,7 @@ create policy "Allow public read/write for TEEM devices"
           <div class="form-group" id="ued-vehicle-group">
             <label class="form-label">On-Duty Vehicle (for live tracking)</label>
             <select id="ued-vehicle" class="form-select"></select>
-            <p class="form-hint">The vehicle this supervisor moves with on the field. It is used to label the live position on the GPS map.</p>
+            <p class="form-hint">Assigned vehicle</p>
           </div>
           <div class="form-group">
             <label class="form-label">Passport Photograph</label>
@@ -1810,7 +1847,7 @@ create policy "Allow public read/write for TEEM devices"
           </div>
           <label class="settings-check">
             <input type="checkbox" id="ued-force-change">
-            <span>Require this person to change the password at next sign in</span>
+            <span>Require password change at next sign in</span>
           </label>
 
           <div class="modal-inline-actions">
@@ -1830,7 +1867,7 @@ create policy "Allow public read/write for TEEM devices"
         <div class="doc-preview-header-left">
           <h3 class="modal-title" id="doc-preview-title">&#128196; Preview</h3>
           <button type="button" class="btn btn-sm btn-outline doc-settings-toggle-btn" id="doc-settings-toggle-btn" onclick="toggleDocPreviewSettings()" title="Collapse or expand Font Settings for Full-Screen Preview">
-            &#9652; Collapse Settings (Full Screen)
+            &#9652; Collapse settings
           </button>
         </div>
         <button class="modal-close-btn" onclick="closeModal('modal-doc-preview')">&#10005;</button>
@@ -1842,17 +1879,17 @@ create policy "Allow public read/write for TEEM devices"
               <label class="form-label">Font Size</label>
               <div class="font-stepper">
                 <button type="button" class="font-step-btn" onclick="stepDocFont(-0.5)">&minus;</button>
-                <span class="font-step-value" id="doc-font-value">10.5 pt</span>
+                <span class="font-step-value" id="doc-font-value">11 pt</span>
                 <button type="button" class="font-step-btn" onclick="stepDocFont(0.5)">+</button>
-                <input type="range" id="doc-font-range" class="font-range" min="6" max="14" step="0.5" value="10.5" oninput="setDocFont(this.value)">
+                <input type="range" id="doc-font-range" class="font-range" min="6" max="14" step="0.5" value="11" oninput="setDocFont(this.value)">
               </div>
             </div>
             <div class="doc-control">
               <label class="form-label">Margins</label>
               <select id="doc-margin-select" class="form-select" onchange="setDocMargins(this.value)">
-                <option value="standard">Standard (roomy)</option>
-                <option value="tight" selected>Tight (fit more per page)</option>
-                <option value="minimal">Minimal (0.1 in)</option>
+                <option value="standard">Standard margin (0.5 in)</option>
+                <option value="tight" selected>Compact (fits more per page)</option>
+                <option value="minimal">Dense (longest tables)</option>
               </select>
             </div>
             <div class="doc-control">
@@ -1867,7 +1904,7 @@ create policy "Allow public read/write for TEEM devices"
             <div class="doc-control doc-control-check">
               <label class="settings-check">
                 <input type="checkbox" id="doc-autofit" checked onchange="setDocAutoFit(this.checked)">
-                <span>Auto-fit: shrink slightly and re-measure so the signature never lands alone on a page</span>
+                <span>Auto-fit signature</span>
               </label>
             </div>
           </div>
@@ -1889,6 +1926,16 @@ create policy "Allow public read/write for TEEM devices"
   </div>
 
   <!-- HOW THIS MAP WORKS -->
+  <div class="modal-backdrop" id="modal-request-history">
+    <div class="modal-card modal-lg">
+      <div class="modal-header">
+        <h3 class="modal-title">&#128340; Request history</h3>
+        <button class="modal-close-btn" onclick="closeModal('modal-request-history')">&#10005;</button>
+      </div>
+      <div class="modal-body" id="request-history-body"></div>
+    </div>
+  </div>
+
   <div class="modal-backdrop" id="modal-map-help">
     <div class="modal-card modal-lg">
       <div class="modal-header">
@@ -1899,35 +1946,27 @@ create policy "Allow public read/write for TEEM devices"
         <div class="map-help-grid">
           <div class="map-help-item">
             <strong>&#128506;&#65039; Fully offline</strong>
-            <span>Every unit coordinate travels inside the app, so the map draws with no internet at all.</span>
+            <span>Map works offline.</span>
           </div>
           <div class="map-help-item">
             <strong>&#128311; Unit health</strong>
-            <span>Green is optimal, amber is due soon, and <strong>red blinks</strong> once a commercial, medical,
-              institutional or municipal unit passes <strong>2 weeks</strong>, or an industrial unit passes
-              <strong>1 month</strong>, without evacuation.</span>
+            <span>Green: optimal. Amber: due soon. <strong>Red</strong>: overdue.</span>
           </div>
           <div class="map-help-item">
             <strong>&#128666; Supervisors and vehicles</strong>
-            <span>A supervisor moves with the vehicle, so their phone's positions are the vehicle's route. Each
-              appears as a human icon labelled with the supervisor's name, with a dashed trail, orange squares
-              where it stopped and a pulsing ring while it is moving.</span>
+            <span>Supervisor positions form the route.</span>
           </div>
           <div class="map-help-item">
             <strong>&#127919; Locate someone</strong>
-            <span>Press <em>Show On Map</em> on a supervisor's row and the map flies to them with a target ring,
-              so you know exactly which icon you are looking at.</span>
+            <span>Press <em>Show On Map</em>Select a supervisor to locate them.</span>
           </div>
           <div class="map-help-item">
             <strong>&#128506; Moving around</strong>
-            <span>Drag the map to pan, scroll or pinch to zoom, double-click to zoom in on a point, and use the
-              round reset button to fit the whole concession again.</span>
+            <span>Drag to pan. Pinch to zoom.</span>
           </div>
           <div class="map-help-item">
             <strong>&#128225; Reporting</strong>
-            <span>A supervisor phone reports automatically at launch and every 3 minutes while the app is open,
-              signed in and online. <em>Start Tracking On This Device</em> streams continuously instead.
-              Positions are reported automatically by each supervisor's phone while they are signed in and online.</span>
+            <span>Positions update every 3 minutes.</span>
           </div>
         </div>
       </div>
@@ -1997,7 +2036,7 @@ create policy "Allow public read/write for TEEM devices"
               </div>
             </div>
             <input type="file" id="prof-photo-file" class="photo-file-hidden" accept="image/*" onchange="readPhotoFile(this, 'prof-photo-preview')">
-            <p class="form-hint">JPG or PNG. Drag, scroll, or pinch to zoom and crop your picture before saving.</p>
+            <p class="form-hint">JPG or PNG</p>
           </div>
           <button type="submit" class="btn btn-primary">Save My Profile</button>
         </form>
@@ -2091,10 +2130,10 @@ create policy "Allow public read/write for TEEM devices"
                   title="Show / hide password">&#128065;</button>
             </div>
           </div>
-          <p class="form-hint">Passwords are shown in clear here so they can be read out to the user you are creating.</p>
+          <p class="form-hint">Passwords are visible during creation</p>
           <label class="settings-check">
             <input type="checkbox" id="reset-force-change" checked>
-            <span>Require this user to change the password at next sign in</span>
+            <span>Require password change at next sign in</span>
           </label>
         </div>
         <div class="modal-footer">
@@ -2230,9 +2269,8 @@ create policy "Allow public read/write for TEEM devices"
           </div>
         </div>
         <div style="padding:12px;background:#F0FDF4;border:1px solid #86EFAC;border-radius:10px;font-size:12.5px;color:#14532D;line-height:1.6;">
-          <strong>Select YES</strong> to stamp the chosen evacuation date onto the evacuation schedule, append the record to the facility report and refresh the compliance audit automatically.<br>
-          <strong>Select NO</strong> to leave every detail exactly at the last updated value.
-        </div>
+          <strong>Select YES</strong>Evacuation date<br>
+          <strong>Select NO</strong>Keep existing details</div>
       </div>
       <div class="modal-footer">
         <button type="button" class="btn btn-outline" onclick="confirmEvacuateFacility(false)">&#10005; No - Keep Last Record</button>
@@ -2307,7 +2345,7 @@ create policy "Allow public read/write for TEEM devices"
             </div>
           </div>
           <div id="edit-fac-total-with-vat-box" class="tariff-vat-total-banner" style="background:#ECFDF5;border:1px solid #86EFAC;border-radius:10px;padding:10px 14px;margin-top:2px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
-            <span style="font-size:12.5px;font-weight:700;color:#0F5328;" id="edit-fac-total-with-vat-label">Monthly Total (when Tax/VAT is added to Monthly Tariff):</span>
+            <span style="font-size:12.5px;font-weight:700;color:#0F5328;" id="edit-fac-total-with-vat-label">Monthly total:</span>
             <strong id="edit-fac-total-with-vat-val" style="font-size:15px;font-weight:900;color:#0F5328;">&#8358;0</strong>
           </div>
 
@@ -2443,7 +2481,7 @@ create policy "Allow public read/write for TEEM devices"
             </div>
           </div>
           <div id="add-fac-total-with-vat-box" class="tariff-vat-total-banner" style="background:#ECFDF5;border:1px solid #86EFAC;border-radius:10px;padding:10px 14px;margin-top:2px;margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
-            <span style="font-size:12.5px;font-weight:700;color:#0F5328;" id="add-fac-total-with-vat-label">Monthly Total (when Tax/VAT is added to Monthly Tariff):</span>
+            <span style="font-size:12.5px;font-weight:700;color:#0F5328;" id="add-fac-total-with-vat-label">Monthly total:</span>
             <strong id="add-fac-total-with-vat-val" style="font-size:15px;font-weight:900;color:#0F5328;">&#8358;0</strong>
           </div>
         </div>
@@ -2541,7 +2579,7 @@ create policy "Allow public read/write for TEEM devices"
           <input type="hidden" id="pay-fac-id">
           <div style="background:#F0FDF4;border:1px solid #86EFAC;border-radius:10px;padding:12px;">
             <strong style="font-size:14px;" id="pay-fac-title">Facility</strong>
-            <div style="font-size:12px;color:#14532D;margin-top:2px;" id="pay-fac-subtitle">Select whether to add a new payment record or edit an existing payment record.</div>
+            <div style="font-size:12px;color:#14532D;margin-top:2px;" id="pay-fac-subtitle">Add or edit a payment record</div>
           </div>
           <div class="form-group">
             <label class="form-label">Action Mode (Add New or Edit Existing Payment)</label>
@@ -2686,7 +2724,7 @@ create policy "Allow public read/write for TEEM devices"
             <span>Print <strong>(RE-Request)</strong> beside the outlet name.</span>
           </label>
           <div class="sch-edit-danger">
-            <span>Captured in error? Remove this entry from the schedule. The letter and its totals update immediately.</span>
+            <span>Remove entry</span>
             <button type="button" class="btn btn-sm btn-danger" onclick="removeSchedulePayment()">&#128465;&#65039; Remove Entry</button>
           </div>
         </div>
@@ -2706,9 +2744,7 @@ create policy "Allow public read/write for TEEM devices"
         <button class="modal-close-btn" onclick="closePhotoEditorModal()">&#10005;</button>
       </div>
       <div class="modal-body" style="align-items:center;">
-        <p style="font-size:12.5px;color:var(--text-muted);text-align:center;line-height:1.45;margin:0 0 8px;">
-          Drag to position &bull; pinch with two fingers or use the zoom slider to zoom in/out before saving.
-        </p>
+        <p style="font-size:12.5px;color:var(--text-muted);text-align:center;line-height:1.45;margin:0 0 8px;">Drag to position.</p>
         <div class="photo-crop-stage" id="photo-crop-stage">
           <canvas id="photo-crop-canvas" width="240" height="240"></canvas>
           <div class="photo-crop-ring"></div>
@@ -2784,9 +2820,7 @@ create policy "Allow public read/write for TEEM devices"
             </div>
           </div>
           <p id="mr-supervisor-rate-hint" style="display:none;font-size:12px;color:#475569;margin-top:8px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:8px 10px;">
-            &#128712; Supervisor entry records the <strong>Facility Name</strong>, <strong>Date</strong>, <strong>Operator Group</strong>, and <strong>No of Trips</strong>. The Administrator assigns and edits the corresponding vehicle usage amount.
-          </p>
-        </div>
+            Records facility, date, team and trips.</div>
         <div class="modal-footer">
           <button type="button" class="btn btn-outline" onclick="closeModal('modal-mr-industrial')">Cancel</button>
           <button type="submit" class="btn btn-primary">&#128190; Save Entry</button>
@@ -2956,9 +2990,7 @@ create policy "Allow public read/write for TEEM devices"
       </div>
       <form onsubmit="submitSettingsPassword(event)">
         <div class="modal-body">
-          <p style="font-size:13px;color:var(--text-secondary);line-height:1.5;">
-            Enter the Settings menu password to access system configuration, account control, cloud sync, and administrative tools.
-          </p>
+          <p style="font-size:13px;color:var(--text-secondary);line-height:1.5;">Enter the settings password</p>
           <div class="form-group">
             <label class="form-label" for="settings-gate-password">Settings Password</label>
             <div class="password-field">
