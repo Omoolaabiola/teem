@@ -4,7 +4,7 @@
 // 100% Online & Offline Hybrid Architecture with PDF Generation & Cloud Sync
 // ============================================================================
 
-const RELEASE = '17';
+const RELEASE = '18';
 const CURRENT_SYSTEM_DATE = (function () {
   const now = new Date();
   return now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
@@ -2551,12 +2551,15 @@ function parsePeriodLabel(label) {
   if (!found.length) return null;
 
   const baseYear = year || new Date().getFullYear();
-  const startMonth = found[0];
-  const endMonth = found.length > 1 ? found[found.length - 1] : found[0];
+  // Lowest and highest month named, so "Sept - Dec" and "Dec/Sept" both read
+  // as the same span instead of depending on the order they were typed.
+  const startMonth = Math.min.apply(null, found);
+  const endMonth = Math.max.apply(null, found);
   const endYear = endMonth < startMonth ? baseYear + 1 : baseYear;
+  // Months before the concession year come back as 0: they cover nothing here.
   return {
-    start: periodIndexFromParts(baseYear, startMonth),
-    end: periodIndexFromParts(endYear, endMonth)
+    start: Math.max(0, periodIndexFromParts(baseYear, startMonth)),
+    end: Math.max(0, periodIndexFromParts(endYear, endMonth))
   };
 }
 
@@ -2682,8 +2685,55 @@ function latestPayment(facility) {
 
 // The last month this facility has actually paid for. A payment written as a
 // range covers every month up to the end of that range.
+// Names are compared with everything but letters and digits stripped, so
+// "Golden Grace School" and "GOLDEN GRACE SCHOOL." are the same outlet.
+function payRowKey(name) {
+  return String(name || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+// Every payment on file for a facility: its own history PLUS any payment logged
+// in the Payment Schedule Manager under the same outlet. A payment that was
+// entered in the schedule but never copied into the facility record still
+// counts as paid - that was the reason a facility that paid in August could
+// still show as paid up.
+function allPaymentRowsForFacility(facility) {
+  if (!facility) return [];
+  const key = payRowKey(facility.name);
+  const out = (Array.isArray(facility.paymentHistory) ? facility.paymentHistory : []).slice();
+  const seen = {};
+  out.forEach(p => { if (p && p.id) seen[p.id] = true; });
+  (store.state.paymentScheduleRecords || []).forEach(p => {
+    if (!p) return;
+    if (p.id && seen[p.id]) return;
+    const rowKey = payRowKey(p.outlet);
+    if (!rowKey || rowKey !== key) return;
+    seen[p.id] = true;
+    out.push(p);
+  });
+  return out;
+}
+
+// First and last month a payment row covers. Reads periodFrom/periodTo when the
+// row has them, otherwise the written month, otherwise the date it was paid.
+function paymentRowRange(row) {
+  if (!row) return null;
+  const from = parsePeriodLabel(row.periodFrom || row.month);
+  const to = parsePeriodLabel(row.periodTo || row.month);
+  let start = from ? from.start : (to ? to.start : null);
+  let end = to ? to.end : (from ? from.end : null);
+  if (start === null && end === null) {
+    const iso = String(row.date || '').slice(0, 7);
+    if (iso.length !== 7) return null;
+    const idx = periodIndexFromParts(Number(iso.slice(0, 4)), Number(iso.slice(5, 7)));
+    start = idx; end = idx;
+  }
+  if (start === null) start = end;
+  if (end === null) end = start;
+  return { start: Math.max(0, start), end: Math.max(0, end) };
+}
+
 function coveredThroughIndex(facility) {
-  const history = Array.isArray(facility && facility.paymentHistory) ? facility.paymentHistory : [];
+  const history = allPaymentRowsForFacility(facility);
   if (!history.length) return 0;
   let best = 0;
   history.forEach(p => {
@@ -2709,7 +2759,9 @@ function coveredThroughIndex(facility) {
 // September. Payment history is read through the month parser, so a payment
 // written "Aug-Dec" covers the facility to December and nothing is owing.
 function outstandingPeriodIndexes(facility) {
-  const history = Array.isArray(facility && facility.paymentHistory) ? facility.paymentHistory : [];
+  // A facility with no payment on file at all is not chased - it starts to
+  // count from its first payment, exactly as it always has.
+  const history = allPaymentRowsForFacility(facility);
   if (!history.length) return [];
   const covered = coveredThroughIndex(facility);
   const lastDue = CURRENT_PERIOD_INDEX - 1;
@@ -3338,25 +3390,19 @@ function openStreetReportModal(streetId) {
 
 function onStreetReportMonthChanged() { renderStreetReportContent(); }
 
+// A record covers a month if the month falls anywhere inside what the record
+// was written for. "Aug/Sept" therefore matches both August and September,
+// "Apr - Aug" matches all five, and a plain "Sept" matches only September.
 function recordMatchesMonthKey(item, monthKey) {
   if (!monthKey || monthKey === 'all') return true;
   if (!item) return false;
   if (String(item.date || '').slice(0, 7) === monthKey) return true;
-  const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
   const parts = String(monthKey).split('-');
-  if (parts.length === 2) {
-    const mIdx = parseInt(parts[1], 10) - 1;
-    const mName = monthNames[mIdx];
-    if (mName) {
-      const mLower = mName.toLowerCase();
-      const fields = [item.month, item.periodFrom, item.periodTo];
-      for (let i = 0; i < fields.length; i++) {
-        const val = String(fields[i] || '').toLowerCase();
-        if (val && val.indexOf(mLower) !== -1) return true;
-      }
-    }
-  }
-  return false;
+  if (parts.length !== 2) return false;
+  const target = periodIndexFromParts(Number(parts[0]), Number(parts[1]));
+  const range = paymentRowRange(item);
+  if (!range) return false;
+  return target >= range.start && target <= range.end;
 }
 
 function renderStreetReportContent() {
@@ -5250,15 +5296,24 @@ function ensurePaymentSeqOrder() {
   return true;
 }
 
+function paymentInRequestCategory(p, cat) {
+  if (!p) return false;
+  if (cat === 'Municipal') return p.category === 'Municipal';
+  if (cat === 'Agricultural Waste') return p.category === 'Agricultural Waste';
+  if (cat === 'Construction Waste') return p.category === 'Construction Waste';
+  if (cat === 'Commercial') return p.category === 'Commercial' || p.category === 'Institutional';
+  return p.category === cat;
+}
+
 function requestRecords() {
   const cat = activeRequestCategory;
   if (typeof ensurePaymentSeqOrder === 'function') ensurePaymentSeqOrder();
   const list = (store.state.paymentScheduleRecords || []).filter(p => {
-    if (cat === 'Municipal') return p.category === 'Municipal';
-    if (cat === 'Agricultural Waste') return p.category === 'Agricultural Waste';
-    if (cat === 'Construction Waste') return p.category === 'Construction Waste';
-    if (cat === 'Commercial') return p.category === 'Commercial' || p.category === 'Institutional';
-    return p.category === cat;
+    if (!paymentInRequestCategory(p, cat)) return false;
+    // Filed entries stay on record and still count as paid - they are simply
+    // no longer in the working list.
+    if (p.archived && !store.state.showArchivedRequests) return false;
+    return true;
   });
   // Entry order, oldest entry first. A stable sort, so numbering ties keep
   // whatever order they already had instead of jumping about.
@@ -5682,18 +5737,45 @@ function markRequestRowsDone(spec) {
   if (typeof store.save === 'function') store.save();
 }
 
+// Clears the Payment Schedule Manager for a fresh request. Entries that were
+// already put in a letter (or are ticked right now) are filed away, not deleted:
+// they stay in the records, keep counting as paid, and can be shown again.
 function startNewRequest() {
   const cat = activeRequestCategory;
-  const records = (store.state.paymentScheduleRecords || []).filter(p => (p.category || '') === cat);
-  let cleared = 0;
-  records.forEach(p => { if (p.selected) { p.selected = false; cleared++; } });
+  let filed = 0;
+  (store.state.paymentScheduleRecords || []).forEach(p => {
+    if (!paymentInRequestCategory(p, cat)) return;
+    if (p.archived) { p.selected = false; return; }
+    if (p.requested || p.selected) {
+      p.archived = true;
+      p.archivedAt = new Date().toISOString();
+      p.selected = false;
+      filed++;
+    }
+  });
   store.state.editingRequestId = '';
   store.state.editingRequestRef = '';
   if (typeof store.save === 'function') store.save();
   renderRequestsView();
-  showToast(cleared
-    ? '\u2705 New request started. ' + cleared + ' entr' + (cleared === 1 ? 'y' : 'ies') + ' cleared.'
-    : '\u2705 Ready for a new request.', 'success');
+  showToast(filed
+    ? '\u2705 New request ready. ' + filed + ' entr' + (filed === 1 ? 'y' : 'ies') + ' filed.'
+    : '\u2705 New request ready.', 'success');
+}
+
+function toggleArchivedRequests() {
+  store.state.showArchivedRequests = !store.state.showArchivedRequests;
+  renderRequestsView();
+}
+
+function restoreArchivedRequests() {
+  let n = 0;
+  (store.state.paymentScheduleRecords || []).forEach(p => {
+    if (p.archived && paymentInRequestCategory(p, activeRequestCategory)) { p.archived = false; n++; }
+  });
+  store.state.showArchivedRequests = false;
+  if (typeof store.save === 'function') store.save();
+  renderRequestsView();
+  showToast(n ? '\u21ba ' + n + ' entr' + (n === 1 ? 'y' : 'ies') + ' back in the list.' : 'Nothing to restore.', 'info');
 }
 
 function openRequestHistory() {
@@ -5785,7 +5867,9 @@ function renderRequestsView() {
           (admin ? '<button type="button" class="req-item-del" title="Remove entry" onclick="removePaymentFromSchedule(\'' + p.id + '\')">\u2715</button>' : '') +
         '</span>' +
       '</div>').join('')
-      : '<div class="report-empty">No payment record for this sector yet. Use <strong>+ Add Payment Entry</strong> or record the payment in the facility edit form.</div>';
+          : (store.state.showArchivedRequests
+        ? '<div class="report-empty">No payment record for this sector yet. Use <strong>+ Add Payment Entry</strong> or record the payment in the facility edit form.</div>'
+        : '<div class="report-empty">Ready for a new request. Use <strong>+ Add Payment Entry</strong> to add a payment.</div>');
   }
 
   // v2.9.3 - a supervisor only ticks entries; the wording must not send them
@@ -5795,6 +5879,13 @@ function renderRequestsView() {
     rowsHint.innerHTML = isSupervisor()
       ? 'Select the entries for this letter.'
       : 'Select the entries. Turn on <strong>RE</strong> for a repeat request.';
+  }
+
+  const archToggle = document.getElementById('req-archived-toggle');
+  if (archToggle) {
+    const total = (store.state.paymentScheduleRecords || []).filter(p => paymentInRequestCategory(p, activeRequestCategory) && p.archived).length;
+    archToggle.textContent = (store.state.showArchivedRequests ? '\u25b2 Hide previous' : '\u25bc Show previous') + (total ? ' (' + total + ')' : '');
+    archToggle.style.display = total ? '' : 'none';
   }
 
   const lhToggle = document.getElementById('req-letterhead-toggle');

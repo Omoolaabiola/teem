@@ -604,6 +604,10 @@
               <button class="btn btn-outline" style="flex:1;" onclick="startNewRequest()">&#10133; New request</button>
               <button class="btn btn-outline" style="flex:1;" onclick="openRequestHistory()">&#128340; History</button>
             </div>
+            <div style="display:flex;gap:8px;margin-top:8px;">
+              <button type="button" class="btn btn-outline" id="req-archived-toggle" style="flex:1;font-size:12px;padding:6px 10px;display:none;" onclick="toggleArchivedRequests()">&#9660; Show previous</button>
+              <button type="button" class="btn btn-outline" style="flex:1;font-size:12px;padding:6px 10px;" onclick="restoreArchivedRequests()">&#8634; Restore</button>
+            </div>
           </div>
 
           <div class="req-preview-col">
