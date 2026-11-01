@@ -4,7 +4,7 @@
 // 100% Online & Offline Hybrid Architecture with PDF Generation & Cloud Sync
 // ============================================================================
 
-const RELEASE = '19';
+const RELEASE = '21';
 const CURRENT_SYSTEM_DATE = (function () {
   const now = new Date();
   return now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
@@ -90,6 +90,24 @@ if (typeof window !== 'undefined') {
 const SESSION_MARKER_KEY = 'TEEM_SESSION_USER_V1';
 let _sessionMarkerCache;
 
+// Signing out has to survive a refresh. A session can be put back from four
+// places - the marker, a 5-second auto-backup, a recovery checkpoint and the
+// cloud copy - so "signed out" gets its own storage key that all four obey.
+// It is cleared only when someone actually signs in.
+const SIGNED_OUT_KEY = 'TEEM_SIGNED_OUT_V1';
+
+function markSignedOut() {
+  try { SafeStorage.set(SIGNED_OUT_KEY, '1'); } catch (e) {}
+}
+
+function clearSignedOut() {
+  try { SafeStorage.remove(SIGNED_OUT_KEY); } catch (e) {}
+}
+
+function isSignedOutLocked() {
+  try { return SafeStorage.get(SIGNED_OUT_KEY) === '1'; } catch (e) { return false; }
+}
+
 function readSessionMarker() {
   if (_sessionMarkerCache !== undefined) return _sessionMarkerCache;
   try {
@@ -120,6 +138,7 @@ function clearSessionMarker() {
 
 // Put the signed-in user back into a state object that has lost it.
 function restoreSessionFromMarker(state) {
+  if (isSignedOutLocked()) return false;
   const s = state || (typeof store !== 'undefined' && store ? store.state : null);
   if (!s) return false;
   const users = Array.isArray(s.users) ? s.users : [];
@@ -658,6 +677,11 @@ function userMatchesPassword(user, plain) {
 }
 
 function currentUser() {
+  if (isSignedOutLocked()) {
+    if (store && store.state && store.state.sessionUserId) store.state.sessionUserId = null;
+    if (typeof window !== 'undefined') window._teemActiveSessionUser = null;
+    return null;
+  }
   if (store && store.state && !store.state.sessionUserId) {
     // Cheap: only runs when the state has lost its session.
     restoreSessionFromMarker(store.state);
@@ -1140,6 +1164,7 @@ function completeLoginForUser(user, password, errorBox, remember) {
     if (user.password === password) user.password = hashPassword(password);
     user.role = normalizeUserRole(user.role);
 
+    clearSignedOut();
     store.state.sessionUserId = user.id;
     writeSessionMarker(user);
     if (typeof window !== 'undefined') {
@@ -1421,6 +1446,7 @@ function signOut(reason) {
   settingsUnlockedSession = false;
   store.state.sessionUserId = null;
   clearSessionMarker();
+  markSignedOut();
   store.save();
   showLoginScreen();
   if (reason === 'inactivity') {
@@ -2522,9 +2548,28 @@ function monthNameFromPeriodIndex(idx) {
   return MONTH_ORDER[monthNum - 1];
 }
 
+// A bare month name carries no year, so the year has to come from the payment
+// date: "Dec" paid in January means last December, "Nov" paid in October means
+// this November. The nearest matching month to the payment date wins.
+function yearForBareMonth(monthNum, referenceIso) {
+  const iso = String(referenceIso || '').slice(0, 10);
+  if (iso.length < 7) return new Date().getFullYear();
+  const refYear = Number(iso.slice(0, 4));
+  const refIndex = periodIndexFromParts(refYear, Number(iso.slice(5, 7)));
+  let bestYear = refYear;
+  let bestGap = Infinity;
+  [refYear - 1, refYear, refYear + 1].forEach(function (y) {
+    const gap = Math.abs(periodIndexFromParts(y, monthNum) - refIndex);
+    if (gap < bestGap) { bestGap = gap; bestYear = y; }
+  });
+  return bestYear;
+}
+
 // Reads a written month or month range and returns the first and last month it
-// covers. Returns null when nothing month-like can be found.
-function parsePeriodLabel(label) {
+// covers. Returns null when nothing month-like can be found. Pass the payment
+// date as the second argument whenever one is available - without it a bare
+// "Dec" would be read as the current year instead of the year it belongs to.
+function parsePeriodLabel(label, referenceIso) {
   if (label === undefined || label === null) return null;
   let s = String(label).toLowerCase().trim();
   if (!s) return null;
@@ -2550,12 +2595,13 @@ function parsePeriodLabel(label) {
   }
   if (!found.length) return null;
 
-  const baseYear = year || new Date().getFullYear();
   // Lowest and highest month named, so "Sept - Dec" and "Dec/Sept" both read
   // as the same span instead of depending on the order they were typed.
   const startMonth = Math.min.apply(null, found);
   const endMonth = Math.max.apply(null, found);
-  const endYear = endMonth < startMonth ? baseYear + 1 : baseYear;
+  const baseYear = year || yearForBareMonth(startMonth, referenceIso);
+  const endYear = year ? (year + (endMonth < startMonth ? 1 : 0))
+    : endMonth < startMonth ? baseYear + 1 : baseYear;
   // Months before the concession year come back as 0: they cover nothing here.
   return {
     start: Math.max(0, periodIndexFromParts(baseYear, startMonth)),
@@ -2717,8 +2763,8 @@ function allPaymentRowsForFacility(facility) {
 // row has them, otherwise the written month, otherwise the date it was paid.
 function paymentRowRange(row) {
   if (!row) return null;
-  const from = parsePeriodLabel(row.periodFrom || row.month);
-  const to = parsePeriodLabel(row.periodTo || row.month);
+  const from = parsePeriodLabel(row.periodFrom || row.month, row.date);
+  const to = parsePeriodLabel(row.periodTo || row.month, row.date);
   let start = from ? from.start : (to ? to.start : null);
   let end = to ? to.end : (from ? from.end : null);
   if (start === null && end === null) {
@@ -2738,7 +2784,7 @@ function coveredThroughIndex(facility) {
   let best = 0;
   history.forEach(p => {
     if (!p) return;
-    const parsed = parsePeriodLabel(p.periodTo || p.month || p.periodFrom);
+    const parsed = parsePeriodLabel(p.periodTo || p.month || p.periodFrom, p.date);
     if (parsed) {
       best = Math.max(best, parsed.end);
       return;
@@ -2880,6 +2926,7 @@ function refreshCurrentView() {
       if (prevSessionId && !store.state.sessionUserId) {
         store.state.sessionUserId = prevSessionId;
       }
+      if (isSignedOutLocked()) store.state.sessionUserId = null;
     } catch (e) { /* keep current state */ }
   }
   if (typeof pullFromSupabaseOnline === 'function' && isInternetConnected()) {
@@ -4958,14 +5005,28 @@ function formatOutstandingMonthsRange(facility) {
   return startName + ' - ' + endName;
 }
 
+function facilityHasAnyPayment(facility) {
+  return allPaymentRowsForFacility(facility).length > 0;
+}
+
 function getOwingFacilitiesBySector(sector) {
   const sec = sector || activeDebtorSector || 'Commercial';
+  const includeUnpaid = !!store.state.radarIncludeUnpaid;
   return (store.state.facilities || []).filter(f => {
     const h = getPaymentHealth(f);
-    if (h.owingMonths <= 0) return false;
+    // A facility that has never paid is not chased by default - it starts to
+    // count from its first payment. The switch on the radar lists them for
+    // checking without changing what the report claims they owe.
+    if (h.owingMonths <= 0 && !(includeUnpaid && !facilityHasAnyPayment(f))) return false;
     if (sec === 'all') return true;
     return f.category === sec;
   });
+}
+
+function toggleRadarUnpaid(checked) {
+  store.state.radarIncludeUnpaid = !!checked;
+  if (typeof store.save === 'function') store.save();
+  renderDebtorRadar();
 }
 
 function setDebtorReportSector(sector) {
@@ -5001,6 +5062,9 @@ function renderDebtorRadar() {
     detailLabel.textContent = activeDebtorSector === 'all' ? 'All Sectors' : activeDebtorSector;
   }
 
+  const unpaidSwitch = document.getElementById('radar-include-unpaid');
+  if (unpaidSwitch) unpaidSwitch.checked = !!store.state.radarIncludeUnpaid;
+
   const owing = getOwingFacilitiesBySector(activeDebtorSector);
   if (summaryBadge) {
     summaryBadge.textContent = owing.length + ' Outstanding (' + (activeDebtorSector === 'all' ? 'All Sectors' : activeDebtorSector) + ')';
@@ -5012,11 +5076,12 @@ function renderDebtorRadar() {
     } else {
       reportBody.innerHTML = owing.map((d, idx) => {
         const health = getPaymentHealth(d);
-        const monthsStr = formatOutstandingMonthsRange(d);
+        const never = !facilityHasAnyPayment(d);
+        const monthsStr = never ? 'No payment on record' : formatOutstandingMonthsRange(d);
         return '<tr>' +
           '<td><strong>' + (idx + 1) + '</strong></td>' +
           '<td><strong>' + escapeHtml(d.name) + '</strong></td>' +
-          '<td style="text-align:center;"><span class="badge ' + health.class + '">' + health.owingMonths + '</span></td>' +
+          '<td style="text-align:center;"><span class="badge ' + (never ? 'badge-warning' : health.class) + '">' + (never ? '-' : health.owingMonths) + '</span></td>' +
           '<td><strong>' + escapeHtml(monthsStr) + '</strong></td>' +
         '</tr>';
       }).join('');
@@ -5358,6 +5423,36 @@ function setRequestCategory(cat) {
     if (el) el.classList.toggle('active', k === cat);
   });
   renderRequestsView();
+}
+
+// Selects or clears every entry in the working list in one click.
+function toggleSelectAllRequestEntries(box) {
+  const want = !!(box && box.checked);
+  let n = 0;
+  requestRecords().forEach(p => {
+    const live = (store.state.paymentScheduleRecords || []).find(x => x.id === p.id);
+    if (!live) return;
+    live.selected = want;
+    if (want) n++;
+  });
+  if (typeof store.save === 'function') store.save();
+  renderRequestsView();
+  showToast(want ? '\u2714\ufe0f ' + n + ' entr' + (n === 1 ? 'y' : 'ies') + ' selected.' : 'Selection cleared.', 'info');
+}
+
+// Keeps the Select all box in step with what is ticked below it.
+function refreshSelectAllState(records) {
+  const box = document.getElementById('req-select-all');
+  const count = document.getElementById('req-selected-count');
+  const row = document.getElementById('req-select-all-row');
+  if (!box) return;
+  const total = (records || []).length;
+  const picked = (records || []).filter(p => p.selected).length;
+  box.disabled = total === 0;
+  box.checked = total > 0 && picked === total;
+  box.indeterminate = picked > 0 && picked < total;
+  if (count) count.textContent = total ? picked + ' of ' + total + ' selected' : '';
+  if (row) row.style.display = total ? '' : 'none';
 }
 
 function togglePaymentItemSelection(id) {
@@ -5901,6 +5996,8 @@ function renderRequestsView() {
   if (rebateEl) {
     rebateEl.textContent = meta.rebate ? formatNaira(data.rebate) + ' (' + meta.rebate + '%)' : 'No deduction (Municipal)';
   }
+
+  refreshSelectAllState(data.records);
 }
 
 function requestLetterHtml() {
@@ -9125,6 +9222,7 @@ function applyRestoredState(restoredState, label) {
   if (prevSessionId && !store.state.sessionUserId) {
     store.state.sessionUserId = prevSessionId;
   }
+  if (isSignedOutLocked()) store.state.sessionUserId = null;
   restoreSessionFromMarker(store.state);
   store.save();
   applySessionUI();

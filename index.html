@@ -586,6 +586,12 @@
             <h3 style="font-size:14px;font-weight:800;color:var(--primary);">2. Payment Schedule Manager</h3>
             <p style="display:none;" id="req-rows-hint"></p>
 
+            <label class="req-select-all" id="req-select-all-row" style="display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:700;color:#334155;cursor:pointer;user-select:none;padding:2px 0;">
+              <input type="checkbox" id="req-select-all" onchange="toggleSelectAllRequestEntries(this)">
+              <span>Select all</span>
+              <span id="req-selected-count" style="margin-left:auto;font-weight:600;color:#64748B;"></span>
+            </label>
+
             <div id="req-items-checklist" class="req-list"></div>
 
             <button class="btn btn-outline admin-only" onclick="openAddSchedulePaymentModal()">+ Add Payment Entry</button>
@@ -768,6 +774,10 @@
             <button class="btn btn-primary" id="btn-save-debtor-pdf" onclick="saveDebtorReportPdf()">&#128190; Save</button>
             <span class="badge badge-danger" id="debtor-sector-summary-badge" style="padding:8px 12px;font-size:12px;">0 Outstanding</span>
           </div>
+          <label class="settings-check" style="display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;color:#475569;cursor:pointer;margin-top:8px;">
+            <input type="checkbox" id="radar-include-unpaid" onchange="toggleRadarUnpaid(this.checked)">
+            <span>Also list facilities with no payment on record</span>
+          </label>
         </div>
 
         <div class="data-card">
