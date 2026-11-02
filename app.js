@@ -4,7 +4,7 @@
 // 100% Online & Offline Hybrid Architecture with PDF Generation & Cloud Sync
 // ============================================================================
 
-const RELEASE = '21';
+const RELEASE = '22';
 const CURRENT_SYSTEM_DATE = (function () {
   const now = new Date();
   return now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
@@ -15,6 +15,11 @@ const CURRENT_MONTH_NAME = (function () {
   return months[now.getMonth()] + ' ' + now.getFullYear();
 })();
 const ADMIN_PASSWORD = 'admin2026';
+
+// Every industrial evacuation belongs to this supervisor, and the vehicle
+// usage rate is the TEEM industrial standard.
+const INDUSTRIAL_SUPERVISOR = 'Tomiwa Mulero';
+const INDUSTRIAL_DEFAULT_RATE = 40000;
 
 // Embedded brand images (work in both modular and single-file offline modes)
 const TEEM_IMG = window.TEEM_IMG || { logo: '', signature: '', icon: '', slides: [] };
@@ -3308,14 +3313,16 @@ function confirmEvacuateFacility(isYes) {
   const evacDate = (dateEl && /^\d{4}-\d{2}-\d{2}$/.test(dateEl.value)) ? dateEl.value : currentUsageDateIso();
   const evacMonth = monthLabelFromKey(evacDate.slice(0, 7)) || CURRENT_MONTH_NAME;
 
+  const isIndustrial = f.category === 'Industrial';
+  const supervisorOnRecord = isIndustrial ? INDUSTRIAL_SUPERVISOR : f.supervisor;
   f.lastEvacuated = evacDate;
   if (!Array.isArray(f.evacuationHistory)) f.evacuationHistory = [];
   f.evacuationHistory.unshift({
     date: evacDate,
     month: evacMonth,
     truck: truckUsed,
-    supervisor: f.supervisor,
-    tonnage: f.category === 'Industrial' ? (f.amount / 16000).toFixed(1) : null,
+    supervisor: supervisorOnRecord,
+    tonnage: isIndustrial ? (f.amount / 16000).toFixed(1) : null,
     status: 'Verified Complete'
   });
 
@@ -3324,14 +3331,61 @@ function confirmEvacuateFacility(isYes) {
     date: evacDate,
     target: f.name,
     truck: truckUsed,
-    supervisor: f.supervisor,
+    supervisor: supervisorOnRecord,
     status: 'Completed'
   });
+
+  // An industrial evacuation is written straight into the monthly report -
+  // the same trip must not have to be typed twice.
+  const reportRow = isIndustrial ? pushEvacuationToMonthlyReport(f, evacDate) : null;
 
   store.save();
   renderFacilitiesDirectory();
   renderEvacuations();
-  showToast('\u2705 ' + f.name + ' marked as evacuated today. Schedule, report and audit updated.', 'success');
+  if (reportRow) { try { renderMonthlyReport(); } catch (e) {} }
+  showToast('\u2705 ' + f.name + ' marked as evacuated. Schedule, monthly report and audit updated.', 'success');
+}
+
+// ===========================================================================
+// SEARCH BOX CLEAR (the X that empties a search box)
+// ===========================================================================
+function refreshSearchClear(inputId) {
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  const btn = document.querySelector('[data-clear-for="' + inputId + '"]');
+  if (btn) btn.classList.toggle('show', String(input.value || '').length > 0);
+}
+
+function clearSearchField(inputId) {
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  input.value = '';
+  refreshSearchClear(inputId);
+  try { input.dispatchEvent(new Event('input', { bubbles: true })); } catch (e) {}
+  try { input.dispatchEvent(new Event('keyup', { bubbles: true })); } catch (e) {}
+  if (inputId === 'facility-search-input' && typeof renderFacilitiesDirectory === 'function' && currentActiveView === 'facilities') {
+    renderFacilitiesDirectory();
+  }
+  if (inputId === 'municipal-search-input' && typeof renderMunicipalDirectory === 'function') {
+    renderMunicipalDirectory();
+  }
+  if (inputId === 'fac-local-search' && typeof renderFacilitiesDirectory === 'function') {
+    renderFacilitiesDirectory();
+  }
+  try { input.focus(); } catch (e) {}
+}
+
+function wireSearchClearButtons() {
+  ['facility-search-input', 'municipal-search-input', 'fac-local-search'].forEach(id => {
+    const input = document.getElementById(id);
+    if (!input || input.dataset.clearWired === '1') return;
+    input.dataset.clearWired = '1';
+    const onType = () => refreshSearchClear(id);
+    input.addEventListener('input', onType);
+    input.addEventListener('keyup', onType);
+    input.addEventListener('change', onType);
+    refreshSearchClear(id);
+  });
 }
 
 // ===========================================================================
@@ -3847,6 +3901,10 @@ function deleteEvacuationLogEntry(logIdx) {
     fac.lastEvacuated = fac.evacuationHistory.length ? (fac.evacuationHistory[0].date || '') : '';
     fac.updatedAt = typeof nextMonotonicIso === 'function' ? nextMonotonicIso() : new Date().toISOString();
     localDirtyEntities.add('fac:' + fac.id);
+    // The monthly report row for the same trip goes with it.
+    if (fac.category === 'Industrial' && removed.date && typeof removeMonthlyRowFor === 'function') {
+      removeMonthlyRowFor(fac.name, removed.date);
+    }
   }
   const st = (store.state.municipalStreets || []).find(s => s && (s.name === removed.target || s.name === targetName));
   if (st && Array.isArray(st.evacuationHistory)) {
@@ -5453,17 +5511,42 @@ function refreshSelectAllState(records) {
   box.indeterminate = picked > 0 && picked < total;
   if (count) count.textContent = total ? picked + ' of ' + total + ' selected' : '';
   if (row) row.style.display = total ? '' : 'none';
+  const delBtn = document.getElementById('req-delete-selected');
+  if (delBtn) {
+    delBtn.style.display = picked > 0 ? '' : 'none';
+    const label = delBtn.querySelector('.req-del-label');
+    if (label) label.textContent = ' ' + picked;
+  }
 }
 
 function togglePaymentItemSelection(id) {
   const item = store.state.paymentScheduleRecords.find(p => p.id === id);
-  if (item) { item.selected = !item.selected; store.save(); renderRequestsView(); }
+  if (item) { item.selected = !item.selected; item.updatedAt = new Date().toISOString(); store.save(); renderRequestsView(); }
 }
 
 function togglePaymentItemReRequest(id) {
   if (!requireAdmin('Changing a payment entry')) return;
   const item = store.state.paymentScheduleRecords.find(p => p.id === id);
-  if (item) { item.isReRequest = !item.isReRequest; store.save(); renderRequestsView(); }
+  if (item) { item.isReRequest = !item.isReRequest; item.updatedAt = new Date().toISOString(); store.save(); renderRequestsView(); }
+}
+
+// Deletes every ticked entry in the working list (the tick box decides which).
+function deleteSelectedRequestEntries() {
+  if (!requireAdmin('Deleting request entries')) return;
+  const picked = requestRecords().filter(p => p.selected);
+  if (!picked.length) { showToast('Tick the entries you want to delete first.', 'warning'); return; }
+  const msg = 'Delete ' + picked.length + ' selected entr' + (picked.length === 1 ? 'y' : 'ies') + '?' +
+    '\n\nThe payment record is removed everywhere, so it will not come back on the next refresh.';
+  let go = true;
+  try { go = window.confirm(msg); } catch (e) { go = true; }
+  if (!go) return;
+  const ids = picked.map(p => p.id);
+  ids.forEach(id => { if (typeof recordDeletedId === 'function') recordDeletedId(id); });
+  store.state.paymentScheduleRecords = (store.state.paymentScheduleRecords || []).filter(p => ids.indexOf(p.id) === -1);
+  if (typeof store.save === 'function') store.save();
+  if (typeof scheduleImmediateCloudPush === 'function') scheduleImmediateCloudPush();
+  renderRequestsView();
+  showToast('\ud83d\uddd1\ufe0f ' + ids.length + ' entr' + (ids.length === 1 ? 'y' : 'ies') + ' deleted.', 'success');
 }
 
 function removePaymentFromSchedule(id) {
@@ -5829,6 +5912,7 @@ function markRequestRowsDone(spec) {
     p.requested = true;
     p.requestedAt = new Date().toISOString();
     p.requestedRef = spec.reference || '';
+    p.updatedAt = p.requestedAt;
   });
   if (typeof store.save === 'function') store.save();
 }
@@ -5839,19 +5923,24 @@ function markRequestRowsDone(spec) {
 function startNewRequest() {
   const cat = activeRequestCategory;
   let filed = 0;
+  const now = new Date().toISOString();
+  // Everything that is in the working list belongs to the letter that is being
+  // closed, ticked or not. It is filed away - never deleted - so the new list
+  // starts empty and the old one cannot come back after a refresh or an update.
   (store.state.paymentScheduleRecords || []).forEach(p => {
     if (!paymentInRequestCategory(p, cat)) return;
-    if (p.archived) { p.selected = false; return; }
-    if (p.requested || p.selected) {
-      p.archived = true;
-      p.archivedAt = new Date().toISOString();
-      p.selected = false;
-      filed++;
-    }
+    if (p.archived) { p.selected = false; p.updatedAt = now; return; }
+    p.archived = true;
+    p.archivedAt = now;
+    p.updatedAt = now;
+    p.selected = false;
+    filed++;
   });
+  store.state.showArchivedRequests = false;
   store.state.editingRequestId = '';
   store.state.editingRequestRef = '';
   if (typeof store.save === 'function') store.save();
+  if (typeof scheduleImmediateCloudPush === 'function') scheduleImmediateCloudPush();
   renderRequestsView();
   showToast(filed
     ? '\u2705 New request ready. ' + filed + ' entr' + (filed === 1 ? 'y' : 'ies') + ' filed.'
@@ -5866,7 +5955,12 @@ function toggleArchivedRequests() {
 function restoreArchivedRequests() {
   let n = 0;
   (store.state.paymentScheduleRecords || []).forEach(p => {
-    if (p.archived && paymentInRequestCategory(p, activeRequestCategory)) { p.archived = false; n++; }
+    if (p.archived && paymentInRequestCategory(p, activeRequestCategory)) {
+      p.archived = false;
+      delete p.archivedAt;
+      p.updatedAt = new Date().toISOString();
+      n++;
+    }
   });
   store.state.showArchivedRequests = false;
   if (typeof store.save === 'function') store.save();
@@ -6317,6 +6411,9 @@ function deleteFacilityEvacuationRecord(facilityId, recordIdx, stayInEditModal) 
   } else {
     f.lastEvacuated = '';
   }
+  if (removed && f.category === 'Industrial' && removed.date && typeof removeMonthlyRowFor === 'function') {
+    removeMonthlyRowFor(f.name, removed.date);
+  }
   f.updatedAt = typeof nextMonotonicIso === 'function' ? nextMonotonicIso() : new Date().toISOString();
   localDirtyEntities.add('fac:' + f.id);
   store.save();
@@ -6547,7 +6644,7 @@ function saveEditFacility(e) {
     const chosenDate = rawEvacDate || evRec.date || currentUsageDateIso();
     evRec.date = chosenDate;
     evRec.month = monthLabelFromKey(chosenDate.slice(0, 7)) || CURRENT_MONTH_NAME;
-    evRec.supervisor = f.supervisor;
+    evRec.supervisor = f.category === 'Industrial' ? INDUSTRIAL_SUPERVISOR : f.supervisor;
     if (!evRec.id) evRec.id = 'evac-' + f.id + '-' + chosenDate + '-' + eIdx;
     f.evacuationHistory.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
     f.lastEvacuated = f.evacuationHistory[0].date || chosenDate;
@@ -6559,12 +6656,15 @@ function saveEditFacility(e) {
         date: rawEvacDate,
         month: monthLabelFromKey(rawEvacDate.slice(0, 7)) || CURRENT_MONTH_NAME,
         truck: 'Blue Compactor (TEEM-01)',
-        supervisor: f.supervisor,
+        supervisor: f.category === 'Industrial' ? INDUSTRIAL_SUPERVISOR : f.supervisor,
         tonnage: f.category === 'Industrial' ? (f.amount / 16000).toFixed(1) : null,
         status: 'Verified Complete'
       });
     }
   }
+
+  // Industrial evacuations keep the monthly report in step, automatically.
+  if (f.category === 'Industrial') syncFacilityHistoryToReport(f);
 
   // Handle Payment Record selection (edit in place, add new, or none/default)
   const payerName = document.getElementById('edit-fac-payer-name').value.trim() || f.name;
@@ -6681,7 +6781,7 @@ function saveAddFacility(e) {
     name: name,
     category: cat,
     location: locEl && locEl.value.trim() ? cleanAddress(locEl.value) : 'Abeokuta',
-    supervisor: sup,
+    supervisor: cat === 'Industrial' ? INDUSTRIAL_SUPERVISOR : sup,
     amount: amt,
     vat: Number(document.getElementById('add-fac-vat').value) || 0,
     lastEvacuated: '',
@@ -7490,6 +7590,15 @@ function recordDeletedId() {
 }
 window.recordDeletedId = recordDeletedId;
 
+// Undoes a tombstone: used when a record the user deleted is created again on
+// purpose (the same trip re-entered), so the deletion no longer applies.
+function forgetDeletedId(id) {
+  if (!id || !store || !store.state || !Array.isArray(store.state.deletedIds)) return;
+  const at = store.state.deletedIds.indexOf(id);
+  if (at !== -1) store.state.deletedIds.splice(at, 1);
+}
+window.forgetDeletedId = forgetDeletedId;
+
 // ===========================================================================
 // DELETE A FACILITY FROM ITS OWN ROW (administrators only)
 // Same effect as Settings > Delete, without leaving the directory.
@@ -7853,6 +7962,60 @@ function smartMergeCloudState(localState, remoteRaw) {
   }
   if (remoteState.updatedAt) noteCloudTimestamp(remoteState.updatedAt);
   if (localState && localState.updatedAt) noteCloudTimestamp(localState.updatedAt);
+
+// Rows of one monthly report month are matched on what they describe, not on
+// their position, so nothing is lost and nothing is duplicated.
+const MR_ROW_KEY_FIELDS = {
+  industrial: ['company', 'date', 'group', 'partnerTitle'],
+  salaries: ['name', 'bank', 'accountNumber'],
+  municipal: ['supervisor'],
+  fuel: ['date', 'vehicle', 'plate'],
+  repairs: ['date', 'vehicle', 'item', 'description']
+};
+
+function monthlyReportRowKey(section, row) {
+  const fields = MR_ROW_KEY_FIELDS[section] || ['date'];
+  return fields.map(f => String((row && row[f]) === undefined || (row && row[f]) === null ? '' : row[f]).trim().toLowerCase()).join('|');
+}
+
+function mergeMonthlyReportRows(locRep, remRep, deletedSet, period) {
+  let changed = false;
+  const locTs = Date.parse(locRep.updatedAt || 0) || 0;
+  const remTs = Date.parse(remRep.updatedAt || 0) || 0;
+  const remoteIsNewer = remTs > locTs;
+  Object.keys(MR_ROW_KEY_FIELDS).forEach(section => {
+    if (!Array.isArray(locRep[section])) locRep[section] = [];
+    const remRows = Array.isArray(remRep[section]) ? remRep[section] : [];
+    if (!remRows.length) return;
+    const positions = new Map();
+    locRep[section].forEach((row, idx) => {
+      if (row) positions.set(monthlyReportRowKey(section, row), idx);
+    });
+    remRows.forEach(remRow => {
+      if (!remRow) return;
+      if (remRow.id && deletedSet && deletedSet.has(remRow.id)) return;
+      if (section === 'industrial' && deletedSet && remRow.group !== 'partner' &&
+          deletedSet.has(monthlyRowTombstone(period, remRow.company, remRow.date))) return;
+      const key = monthlyReportRowKey(section, remRow);
+      if (positions.has(key)) {
+        const idx = positions.get(key);
+        const locRow = locRep[section][idx];
+        if (JSON.stringify(locRow) === JSON.stringify(remRow)) return;
+        if (remoteIsNewer) {
+          locRep[section][idx] = JSON.parse(JSON.stringify(remRow));
+          changed = true;
+        }
+        return;
+      }
+      locRep[section].push(JSON.parse(JSON.stringify(remRow)));
+      positions.set(key, locRep[section].length - 1);
+      changed = true;
+    });
+  });
+  if (remTs > locTs) { locRep.updatedAt = remRep.updatedAt; changed = true; }
+  if (!locRep.partnerTitle && remRep.partnerTitle) { locRep.partnerTitle = remRep.partnerTitle; changed = true; }
+  return changed;
+}
 
   let changed = false;
 
@@ -8226,7 +8389,9 @@ function smartMergeCloudState(localState, remoteRaw) {
     localState.municipalStreets = Array.from(streetMap.values());
   }
 
-  // 5. Merge Monthly Reports (all 6 sections per month)
+  // 5. Merge Monthly Reports (all 6 sections per month).
+  // Rows are merged one by one, never by replacing the whole month: a trip
+  // typed on the phone used to vanish when the laptop saved something else.
   if (remoteState.monthlyReports && typeof remoteState.monthlyReports === 'object') {
     if (!localState.monthlyReports || typeof localState.monthlyReports !== 'object') {
       localState.monthlyReports = {};
@@ -8240,12 +8405,7 @@ function smartMergeCloudState(localState, remoteRaw) {
         changed = true;
         return;
       }
-      const locTs = Date.parse(locRep.updatedAt || 0) || 0;
-      const remTs = Date.parse(remRep.updatedAt || 0) || 0;
-      if (remTs > locTs) {
-        localState.monthlyReports[period] = JSON.parse(JSON.stringify(remRep));
-        changed = true;
-      }
+      if (mergeMonthlyReportRows(locRep, remRep, deletedSet, period)) changed = true;
     });
   }
 
@@ -8308,7 +8468,13 @@ function smartMergeCloudState(localState, remoteRaw) {
         const localItem = localState[colKey][known];
         const lTs = Date.parse(localItem.updatedAt || 0) || 0;
         const rTs = Date.parse(rItem.updatedAt || 0) || 0;
-        const shouldRefresh = remGlobalNewer ? (rTs >= lTs) : (rTs > lTs);
+        let shouldRefresh = remGlobalNewer ? (rTs >= lTs) : (rTs > lTs);
+        // A filed entry stays filed. Only a later, deliberate un-filing on the
+        // other device reopens it - a stale cloud copy must never bring a
+        // closed request list back on the next refresh.
+        if (colKey === 'paymentScheduleRecords' && localItem.archived && !rItem.archived && !(rItem.updatedAt && rTs > lTs)) {
+          shouldRefresh = false;
+        }
         if (shouldRefresh && JSON.stringify(localItem) !== JSON.stringify(rItem)) {
           const incoming = JSON.parse(JSON.stringify(rItem));
           // The place in the list belongs to the record, not to the sync.
@@ -10560,6 +10726,71 @@ function enforceCurrentVersionStamp() {
   } catch (e) {}
 }
 
+// ===========================================================================
+// v22 DATA REPAIR - runs on every device, once for the one-time steps
+// ===========================================================================
+function runV22Migrations() {
+  let touched = false;
+
+  // 1. A closed request list stays closed: the "previous" view is never left on.
+  if (store.state.showArchivedRequests) {
+    store.state.showArchivedRequests = false;
+    touched = true;
+  }
+
+  // 2. Every industrial evacuation on record belongs to Tomiwa.
+  if (!store.state.v22IndSupervisorDone) {
+    (store.state.facilities || []).forEach(f => {
+      if (!f || f.category !== 'Industrial') return;
+      (f.evacuationHistory || []).forEach(ev => {
+        if (ev && ev.supervisor !== INDUSTRIAL_SUPERVISOR) { ev.supervisor = INDUSTRIAL_SUPERVISOR; touched = true; }
+      });
+      (f.paymentHistory || []).forEach(p => {});
+    });
+    const indNames = (store.state.facilities || [])
+      .filter(f => f && f.category === 'Industrial')
+      .map(f => String(f.name || '').trim().toLowerCase());
+    (store.state.evacuationLogs || []).forEach(l => {
+      if (l && indNames.indexOf(String(l.target || '').trim().toLowerCase()) !== -1 && l.supervisor !== INDUSTRIAL_SUPERVISOR) {
+        l.supervisor = INDUSTRIAL_SUPERVISOR;
+        touched = true;
+      }
+    });
+    Object.keys(store.state.monthlyReports || {}).forEach(period => {
+      const rec = store.state.monthlyReports[period];
+      if (!rec || !Array.isArray(rec.industrial)) return;
+      rec.industrial.forEach(r => {
+        if (r && r.group !== 'partner' && r.supervisor !== INDUSTRIAL_SUPERVISOR) {
+          r.supervisor = INDUSTRIAL_SUPERVISOR;
+          touched = true;
+        }
+      });
+    });
+    store.state.v22IndSupervisorDone = true;
+    touched = true;
+  }
+
+  // 3. Every industrial evacuation already on file appears in its monthly
+  //    report, so the two tabs match from the moment this version opens.
+  if (!store.state.v22IndReportSyncDone) {
+    (store.state.facilities || []).forEach(f => {
+      if (!f || f.category !== 'Industrial') return;
+      // Seeded starter records are not real trips; only real ones are copied.
+      const real = (f.evacuationHistory || []).filter(ev => ev && ev.date && String(ev.id || '').indexOf('evac-seed-') !== 0);
+      if (!real.length) return;
+      const copy = Object.assign({}, f, { evacuationHistory: real });
+      if (syncFacilityHistoryToReport(copy) > 0) touched = true;
+    });
+    store.state.v22IndReportSyncDone = true;
+    touched = true;
+  }
+
+  if (touched && typeof store.save === 'function') {
+    try { store.save(); } catch (e) {}
+  }
+  return touched;
+}
+
 function bootTeem() {
   enforceCurrentVersionStamp();
   try { if (typeof window !== 'undefined') { window.addEventListener('online', function () { scheduleDriveRetry(1500); }); } } catch (e) {}
@@ -10586,7 +10817,9 @@ function bootTeem() {
   if (local) { local.addEventListener('input', renderFacilitiesDirectory); local.addEventListener('keyup', renderFacilitiesDirectory); }
   const mun = document.getElementById('municipal-search-input');
   if (mun) { mun.addEventListener('input', renderMunicipalDirectory); mun.addEventListener('keyup', renderMunicipalDirectory); }
+  wireSearchClearButtons();
 
+  try { runV22Migrations(); } catch (e) {}
   initDialogControls();
   initMapNavigation();
   renderAll();
@@ -12509,15 +12742,207 @@ function renderMonthlyReport() {
 }
 
 // --- Interactive CRUD for Monthly Report Sections 1 to 5 ---
+// ===========================================================================
+// INDUSTRIAL EVACUATION <-> MONTHLY REPORT  (automatic, both directions)
+// A trip recorded on either side is written to the other side straight away.
+// Nothing has to be synced by hand.
+// ===========================================================================
+function industrialFacilityList() {
+  return (store.state.facilities || []).filter(f => f && f.category === 'Industrial');
+}
+
+function facilityByName(name) {
+  const want = String(name || '').trim().toLowerCase();
+  if (!want) return null;
+  return (store.state.facilities || []).find(f => f && String(f.name || '').trim().toLowerCase() === want) || null;
+}
+
+function defaultTruckName() {
+  const v = (store.state.vehicles || [])[0];
+  return (v && v.name) || 'Blue Compactor (TEEM-01)';
+}
+
+function reportPeriodForDate(isoDate) {
+  const key = String(isoDate || '').slice(0, 7);
+  if (!/^\d{4}-\d{2}$/.test(key)) return activeMonthlyReportPeriod || CURRENT_MONTH_NAME;
+  return monthLabelFromKey(key) || activeMonthlyReportPeriod || CURRENT_MONTH_NAME;
+}
+
+function monthlyIndRowKey(company, date, group) {
+  return [String(company || '').trim().toLowerCase(), String(date || '').slice(0, 10), (group === 'partner' ? 'partner' : 'teem')].join('|');
+}
+
+function monthlyRowTombstone(period, company, date) {
+  return 'mr-del:' + String(period || '') + ':' + monthlyIndRowKey(company, date, 'teem');
+}
+
+// Takes the report row out when the same trip is removed from the facility.
+function removeMonthlyRowFor(company, isoDate) {
+  const date = String(isoDate || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return false;
+  const period = reportPeriodForDate(date);
+  const data = getMonthlyReportData(period);
+  const key = monthlyIndRowKey(company, date, 'teem');
+  const before = data.industrial.length;
+  data.industrial = (data.industrial || []).filter(r => monthlyIndRowKey(r.company, r.date, r.group) !== key);
+  if (data.industrial.length === before) return false;
+  if (typeof recordDeletedId === 'function') recordDeletedId(monthlyRowTombstone(period, company, date));
+  data.updatedAt = new Date().toISOString();
+  try { renderMonthlyReport(); } catch (e) {}
+  return true;
+}
+
+function newMonthlyIndRowId() {
+  return 'mrind-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 6);
+}
+
+// Facility evacuation tab  ->  monthly report table.
+function pushEvacuationToMonthlyReport(fac, isoDate) {
+  if (!fac || fac.category !== 'Industrial') return null;
+  const date = String(isoDate || '').slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  const data = getMonthlyReportData(reportPeriodForDate(date));
+  const key = monthlyIndRowKey(fac.name, date, 'teem');
+  let row = (data.industrial || []).find(r => r && monthlyIndRowKey(r.company, r.date, r.group) === key);
+  if (row) {
+    if (!row.supervisor) row.supervisor = INDUSTRIAL_SUPERVISOR;
+    return row;
+  }
+  row = {
+    id: newMonthlyIndRowId(),
+    date: date,
+    company: fac.name,
+    trips: 1,
+    rate: isAdmin() ? INDUSTRIAL_DEFAULT_RATE : 0,
+    group: 'teem',
+    supervisor: INDUSTRIAL_SUPERVISOR,
+    updatedAt: new Date().toISOString()
+  };
+  data.industrial.push(row);
+  data.updatedAt = new Date().toISOString();
+  if (typeof forgetDeletedId === 'function') forgetDeletedId(monthlyRowTombstone(reportPeriodForDate(date), fac.name, date));
+  return row;
+}
+
+// Writes the whole evacuation history of one industrial facility to the report.
+function syncFacilityHistoryToReport(fac) {
+  if (!fac || fac.category !== 'Industrial') return 0;
+  let added = 0;
+  (fac.evacuationHistory || []).forEach(ev => {
+    const raw = ev && (ev.date || ev);
+    if (!raw) return;
+    const date = String(raw).slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+    const data = getMonthlyReportData(reportPeriodForDate(date));
+    const key = monthlyIndRowKey(fac.name, date, 'teem');
+    const exists = (data.industrial || []).some(r => r && monthlyIndRowKey(r.company, r.date, r.group) === key);
+    if (exists) return;
+    if (pushEvacuationToMonthlyReport(fac, date)) added += 1;
+  });
+  return added;
+}
+
+function removeFacilityEvacuationOnDate(fac, isoDate) {
+  if (!fac || !Array.isArray(fac.evacuationHistory)) return false;
+  const date = String(isoDate || '').slice(0, 10);
+  const before = fac.evacuationHistory.length;
+  fac.evacuationHistory = fac.evacuationHistory.filter(h => !(h && String(h.date || '').slice(0, 10) === date));
+  const removed = fac.evacuationHistory.length !== before;
+  fac.evacuationHistory.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+  fac.lastEvacuated = fac.evacuationHistory.length ? String(fac.evacuationHistory[0].date || '') : '';
+  if (removed) {
+    store.state.evacuationLogs = (store.state.evacuationLogs || []).filter(l =>
+      !(l && String(l.target || '') === String(fac.name) && String(l.date || '').slice(0, 10) === date));
+  }
+  return removed;
+}
+
+// Monthly report table  ->  facility evacuation tab.
+function applyMonthlyRowToFacility(entry, prevEntry) {
+  if (!entry || entry.group === 'partner') return null;
+  const fac = facilityByName(entry.company);
+  if (!fac) return null;
+  if (fac.category !== 'Industrial') return null;
+  if (!Array.isArray(fac.evacuationHistory)) fac.evacuationHistory = [];
+  if (prevEntry && (String(prevEntry.date || '').slice(0, 10) !== String(entry.date || '').slice(0, 10) ||
+      String(prevEntry.company || '').trim().toLowerCase() !== String(entry.company || '').trim().toLowerCase())) {
+    const oldFac = facilityByName(prevEntry.company);
+    if (oldFac) removeFacilityEvacuationOnDate(oldFac, prevEntry.date);
+  }
+  const date = String(entry.date || '').slice(0, 10);
+  let rec = fac.evacuationHistory.find(h => h && String(h.date || '').slice(0, 10) === date);
+  if (rec) {
+    rec.supervisor = INDUSTRIAL_SUPERVISOR;
+    if (!rec.month) rec.month = monthLabelFromKey(date.slice(0, 7)) || '';
+    if (!rec.truck) rec.truck = defaultTruckName();
+  } else {
+    rec = {
+      id: 'evac-' + fac.id + '-' + date + '-' + Date.now().toString().slice(-4),
+      date: date,
+      month: monthLabelFromKey(date.slice(0, 7)) || '',
+      truck: defaultTruckName(),
+      supervisor: INDUSTRIAL_SUPERVISOR,
+      tonnage: fac.amount ? (fac.amount / 16000).toFixed(1) : null,
+      status: 'Verified Complete'
+    };
+    fac.evacuationHistory.unshift(rec);
+    if (typeof forgetDeletedId === 'function') forgetDeletedId('evac-del:' + fac.id + ':' + date);
+    store.state.evacuationLogs.unshift({
+      id: 'EVAC-IND-' + Date.now().toString().slice(-6),
+      date: date,
+      target: fac.name,
+      truck: rec.truck,
+      supervisor: INDUSTRIAL_SUPERVISOR,
+      status: 'Completed'
+    });
+  }
+  fac.evacuationHistory.sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+  fac.lastEvacuated = fac.evacuationHistory.length ? String(fac.evacuationHistory[0].date || '') : '';
+  if (fac.supervisor !== INDUSTRIAL_SUPERVISOR) fac.supervisor = INDUSTRIAL_SUPERVISOR;
+  return rec;
+}
+
+function fillMonthlyIndFacilityOptions(selected) {
+  const sel = document.getElementById('mr-ind-company');
+  if (!sel) return;
+  const keep = selected === undefined ? String(sel.value || '') : String(selected || '');
+  const names = industrialFacilityList().map(f => f.name);
+  let html = '<option value="">Select facility</option>' +
+    names.map(n => '<option value="' + escapeHtml(n) + '">' + escapeHtml(n) + '</option>').join('');
+  if (keep && names.indexOf(keep) === -1) {
+    html += '<option value="' + escapeHtml(keep) + '">' + escapeHtml(keep) + '</option>';
+  }
+  sel.innerHTML = html;
+  sel.value = keep || '';
+}
+
+function setMonthlyIndCompanyValue(name, group) {
+  const other = document.getElementById('mr-ind-company-other');
+  if (group === 'partner') {
+    if (other) other.value = name || '';
+    const sel = document.getElementById('mr-ind-company');
+    if (sel) sel.value = '';
+  } else {
+    fillMonthlyIndFacilityOptions(name || '');
+    if (other) other.value = '';
+  }
+}
+
 function onMonthlyIndGroupChanged() {
   const grp = document.getElementById('mr-ind-group');
   const wrap = document.getElementById('mr-ind-partner-name-wrap');
   const rateEl = document.getElementById('mr-ind-rate');
   const pInput = document.getElementById('mr-ind-partner-title');
-  if (wrap && grp) wrap.style.display = grp.value === 'partner' ? '' : 'none';
-  if (pInput && grp) pInput.required = grp.value === 'partner';
+  const isPartner = !!(grp && grp.value === 'partner');
+  if (wrap) wrap.style.display = isPartner ? '' : 'none';
+  if (pInput) pInput.required = isPartner;
+  const sel = document.getElementById('mr-ind-company');
+  const other = document.getElementById('mr-ind-company-other');
+  if (sel) { sel.style.display = isPartner ? 'none' : ''; sel.required = !isPartner; }
+  if (other) { other.style.display = isPartner ? '' : 'none'; other.required = isPartner; }
+  if (!isPartner) fillMonthlyIndFacilityOptions();
   if (rateEl && grp && !document.getElementById('mr-ind-edit-idx').value) {
-    rateEl.value = isAdmin() ? (grp.value === 'partner' ? 30000 : 40000) : 0;
+    rateEl.value = isAdmin() ? (isPartner ? 30000 : INDUSTRIAL_DEFAULT_RATE) : '';
     updateMonthlyIndPreviewTotal();
   }
 }
@@ -12532,11 +12957,7 @@ function updateMonthlyIndPreviewTotal() {
 function openMonthlyIndModal(editIdx) {
   if (typeof editIdx === 'number' && !requireAdmin('Editing an industrial evacuation trip or vehicle usage rate')) return;
   const data = getMonthlyReportData(activeMonthlyReportPeriod);
-  const dl = document.getElementById('mr-industrial-facilities-list');
-  if (dl) {
-    const indFacs = (store.state.facilities || []).filter(f => f.category === 'Industrial').map(f => f.name);
-    dl.innerHTML = indFacs.map(n => '<option value="' + escapeHtml(n) + '"></option>').join('');
-  }
+  fillMonthlyIndFacilityOptions('');
   const pDl = document.getElementById('mr-partner-operators-list');
   if (pDl) {
     const knownPartners = ['JIB & JIB'];
@@ -12552,11 +12973,14 @@ function openMonthlyIndModal(editIdx) {
   const totGrp = document.getElementById('mr-ind-total-group');
   const supHint = document.getElementById('mr-supervisor-rate-hint');
   const tripGrid = document.getElementById('mr-ind-trip-grid');
+  const rateEl = document.getElementById('mr-ind-rate');
   const adminActive = isAdmin();
   if (rateGrp) rateGrp.style.display = adminActive ? '' : 'none';
   if (totGrp) totGrp.style.display = adminActive ? '' : 'none';
   if (supHint) supHint.style.display = adminActive ? 'none' : '';
   if (tripGrid) tripGrid.style.gridTemplateColumns = adminActive ? 'repeat(3,minmax(0,1fr))' : 'minmax(0,1fr)';
+  // A supervisor never sees the vehicle usage charge, not even as a value in the box.
+  if (rateEl && !adminActive) rateEl.value = '';
 
   const idxEl = document.getElementById('mr-ind-edit-idx');
   const titleEl = document.getElementById('mr-ind-modal-title');
@@ -12567,20 +12991,23 @@ function openMonthlyIndModal(editIdx) {
     document.getElementById('mr-ind-group').value = r.group === 'partner' ? 'partner' : 'teem';
     document.getElementById('mr-ind-partner-title').value = r.partnerTitle || data.partnerTitle || 'JIB & JIB';
     document.getElementById('mr-ind-date').value = r.date || currentUsageDateIso();
-    document.getElementById('mr-ind-company').value = r.company || '';
+    setMonthlyIndCompanyValue(r.company || '', r.group === 'partner' ? 'partner' : 'teem');
     document.getElementById('mr-ind-trips').value = r.trips || 1;
-    document.getElementById('mr-ind-rate').value = r.rate !== undefined ? r.rate : 40000;
+    if (rateEl) rateEl.value = adminActive ? (r.rate !== undefined ? r.rate : INDUSTRIAL_DEFAULT_RATE) : '';
   } else {
     idxEl.value = '';
     if (titleEl) titleEl.textContent = '+ Add Industrial / Vehicle Usage Trip';
     document.getElementById('mr-ind-group').value = 'teem';
     document.getElementById('mr-ind-partner-title').value = data.partnerTitle || 'JIB & JIB';
     document.getElementById('mr-ind-date').value = currentUsageDateIso();
-    document.getElementById('mr-ind-company').value = '';
+    setMonthlyIndCompanyValue('', 'teem');
     document.getElementById('mr-ind-trips').value = 1;
-    document.getElementById('mr-ind-rate').value = adminActive ? 40000 : 0;
+    if (rateEl) rateEl.value = adminActive ? INDUSTRIAL_DEFAULT_RATE : '';
   }
   onMonthlyIndGroupChanged();
+  if (typeof editIdx === 'number' && data.industrial[editIdx]) {
+    setMonthlyIndCompanyValue(data.industrial[editIdx].company || '', data.industrial[editIdx].group === 'partner' ? 'partner' : 'teem');
+  }
   updateMonthlyIndPreviewTotal();
   openModal('modal-mr-industrial');
 }
@@ -12590,71 +13017,70 @@ function saveMonthlyIndEntry(ev) {
   const data = getMonthlyReportData(activeMonthlyReportPeriod);
   const editIdx = document.getElementById('mr-ind-edit-idx').value;
   if (editIdx !== '' && !requireAdmin('Editing an industrial evacuation trip or vehicle usage rate')) return;
-  const grp = document.getElementById('mr-ind-group').value;
+  const grpEl = document.getElementById('mr-ind-group');
+  const grp = grpEl ? grpEl.value : 'teem';
   const partnerTitle = (document.getElementById('mr-ind-partner-title').value || 'JIB & JIB').trim() || 'JIB & JIB';
   if (grp === 'partner') data.partnerTitle = partnerTitle;
   const adminActive = isAdmin();
-  const existingRate = (editIdx !== '' && data.industrial[Number(editIdx)])
-    ? (Number(data.industrial[Number(editIdx)].rate) || 0)
-    : 0;
-  const rateVal = adminActive
-    ? Math.max(0, Number(document.getElementById('mr-ind-rate').value) || 0)
-    : existingRate;
+  const prevEntry = (editIdx !== '' && data.industrial[Number(editIdx)]) ? data.industrial[Number(editIdx)] : null;
+  const existingRate = prevEntry ? (Number(prevEntry.rate) || 0) : 0;
+  const rateEl = document.getElementById('mr-ind-rate');
+  const rateVal = adminActive ? Math.max(0, Number(rateEl ? rateEl.value : 0) || 0) : existingRate;
+  const selEl = document.getElementById('mr-ind-company');
+  const otherEl = document.getElementById('mr-ind-company-other');
+  const company = String(grp === 'partner' ? (otherEl ? otherEl.value : '') : (selEl ? selEl.value : '')).trim();
+  if (!company) {
+    showToast(grp === 'partner' ? '\u26a0\ufe0f Type the operator facility name.' : '\u26a0\ufe0f Select the facility from the list.', 'warning');
+    return;
+  }
   const entry = {
+    id: prevEntry && prevEntry.id ? prevEntry.id : newMonthlyIndRowId(),
     date: document.getElementById('mr-ind-date').value || currentUsageDateIso(),
-    company: (document.getElementById('mr-ind-company').value || '').trim(),
+    company: company,
     trips: Math.max(1, Number(document.getElementById('mr-ind-trips').value) || 1),
     rate: rateVal,
     group: grp,
-    partnerTitle: grp === 'partner' ? partnerTitle : undefined
+    partnerTitle: grp === 'partner' ? partnerTitle : undefined,
+    supervisor: INDUSTRIAL_SUPERVISOR,
+    updatedAt: new Date().toISOString()
   };
-  if (editIdx !== '' && data.industrial[Number(editIdx)]) {
+  if (prevEntry) {
     data.industrial[Number(editIdx)] = entry;
   } else {
     data.industrial.push(entry);
   }
   data.updatedAt = new Date().toISOString();
+  // The same trip is written to the facility, straight away.
+  const linkedFacility = grp === 'partner' ? null : applyMonthlyRowToFacility(entry, prevEntry);
   store.save();
   closeModal('modal-mr-industrial');
   renderMonthlyReport();
-  showToast('\u2705 Industrial evacuation trip saved.', 'success');
+  try { if (currentActiveView === 'facilities') renderFacilitiesDirectory(); } catch (e) {}
+  try { renderEvacuations(); } catch (e) {}
+  showToast(linkedFacility
+    ? '\u2705 Trip saved. ' + linkedFacility.status + ' evacuation written to ' + entry.company + '.'
+    : '\u2705 Industrial evacuation trip saved.', 'success');
 }
 
 function deleteMonthlyIndEntry(idx) {
   const data = getMonthlyReportData(activeMonthlyReportPeriod);
-  if (!data.industrial[idx]) return;
+  const row = data.industrial[idx];
+  if (!row) return;
   data.industrial.splice(idx, 1);
+  if (row.id && typeof recordDeletedId === 'function') recordDeletedId(row.id);
+  if (row.group !== 'partner' && typeof recordDeletedId === 'function') {
+    recordDeletedId(monthlyRowTombstone(activeMonthlyReportPeriod, row.company, row.date));
+  }
+  const fac = row.group === 'partner' ? null : facilityByName(row.company);
+  if (fac) removeFacilityEvacuationOnDate(fac, row.date);
   data.updatedAt = new Date().toISOString();
   store.save();
   renderMonthlyReport();
-  showToast('\ud83d\uddd1\ufe0f Industrial trip entry removed.', 'warning');
-}
-
-function syncMonthlyIndustrialFromLogs() {
-  if (!requireAdmin('Syncing industrial evacuation logs')) return;
-  const data = getMonthlyReportData(activeMonthlyReportPeriod);
-  const parts = activeMonthlyReportPeriod.split(' ');
-  const monthIdx = ['January','February','March','April','May','June','July','August','September','October','November','December'].indexOf(parts[0]);
-  const ymPrefix = (parts[1] || '2026') + '-' + String(monthIdx + 1).padStart(2, '0');
-  let added = 0;
-  (store.state.facilities || []).filter(f => f.category === 'Industrial').forEach(fac => {
-    const dates = [];
-    if (fac.lastEvacuated && String(fac.lastEvacuated).startsWith(ymPrefix)) dates.push(fac.lastEvacuated);
-    (fac.evacuationHistory || []).forEach(h => {
-      const d = h.date || h;
-      if (d && String(d).startsWith(ymPrefix) && !dates.includes(d)) dates.push(d);
-    });
-    dates.forEach(d => {
-      const exists = data.industrial.some(r => r.group !== 'partner' && r.company === fac.name && r.date === d);
-      if (!exists) {
-        data.industrial.push({ date: d, company: fac.name, trips: 1, rate: 40000, group: 'teem' });
-        added += 1;
-      }
-    });
-  });
-  store.save();
-  renderMonthlyReport();
-  showToast('\ud83d\udd04 Synced ' + added + ' industrial evacuation record(s) for ' + activeMonthlyReportPeriod + '.', 'success');
+  try { if (currentActiveView === 'facilities') renderFacilitiesDirectory(); } catch (e) {}
+  try { renderEvacuations(); } catch (e) {}
+  showToast(fac
+    ? '\ud83d\uddd1\ufe0f Trip removed from the report and from ' + fac.name + '.'
+    : '\ud83d\uddd1\ufe0f Industrial trip entry removed.', 'warning');
 }
 
 function openMonthlySalaryModal(editIdx) {
@@ -12900,6 +13326,8 @@ function monthlyReportSpec(period) {
 
 function buildMonthlyReportPdf(spec, options) {
   options = options || {};
+  // A supervisor's copy carries only the two sections a supervisor may see.
+  if (isSupervisor()) return buildSupervisorMonthlyReportPdf(spec, options);
   const parts = (spec.period || 'October 2026').split(' ');
   const monthUpper = (parts[0] || 'OCTOBER').toUpperCase();
   const yearStr = parts[1] || '2026';
@@ -13061,6 +13489,82 @@ function buildMonthlyReportPdf(spec, options) {
 
   const filename = spec.filename || ('TEEM_Monthly_Income_Expenditure_' + (spec.reference || '2026') + '.pdf');
   const finalDoc = doc.finalize({ title: monthUpper + ' ' + yearStr + ' Income and Expenditure Analysis' });
+  if (!options.defer) finalDoc.save(filename);
+  return { pages: doc.pages, filename: filename, doc: finalDoc, closingPushed: !!doc.closingPushed, signaturePage: doc.signaturePage, lastPageFill: doc.lastPageFill || 0 };
+}
+
+// Supervisor edition of the monthly report: fuel bought and vehicle repairs
+// only - never the vehicle usage rate, the salary schedule or the revenue.
+function buildSupervisorMonthlyReportPdf(spec, options) {
+  options = options || {};
+  const parts = (spec.period || 'October 2026').split(' ');
+  const monthUpper = (parts[0] || 'OCTOBER').toUpperCase();
+  const yearStr = parts[1] || '2026';
+  const fmtN = v => 'N' + Number(v || 0).toLocaleString('en-NG');
+  const doc = new PdfDoc({
+    reference: spec.reference || ('TEEM-MIE-' + monthUpper + '-' + yearStr),
+    heading: monthUpper + ' ' + yearStr + ' - FUEL PURCHASED & VEHICLE REPAIR DETAILS',
+    subheading: 'SUPERVISOR RETURN',
+    layout: options.layout,
+    fontScale: options.fontScale
+  });
+  doc.text(monthUpper + ' ' + yearStr + ' - FUEL PURCHASED & VEHICLE REPAIR DETAILS', { style: 'bold', size: 13, align: 'center' });
+  doc.gap(2);
+
+  doc.text('1. FUEL PURCHASED', { style: 'bold', size: 10.5 });
+  doc.gap(1);
+  const fuelRows = (spec.fuel || []).map((f, idx) => [
+    (idx + 1) + '.',
+    formatFullDateSlash(f.date),
+    f.fuelType || 'Diesel',
+    f.litres + ' Ltrs',
+    fmtN(f.rate),
+    fmtN((Number(f.litres) || 0) * (Number(f.rate) || 0))
+  ]);
+  fuelRows.push(['', '', '', 'Total (' + (spec.fuelLitresTotal || 0) + ' Ltrs)', '', fmtN(spec.fuelTotal || 0)]);
+  doc.table(
+    [
+      { label: 'S/N', width: 12, align: 'center' },
+      { label: 'DATE', width: 28, align: 'center' },
+      { label: 'FUEL TYPE', width: 28, align: 'center' },
+      { label: 'NO OF LITRES', width: 38, align: 'center' },
+      { label: 'AMOUNT/LITRE', width: 34, align: 'right' },
+      { label: 'TOTAL', width: 34, align: 'right' }
+    ],
+    fuelRows,
+    { fontSize: 9.8 }
+  );
+  doc.gap(3);
+
+  doc.text('2. VEHICLE REPAIR', { style: 'bold', size: 10.5 });
+  doc.gap(1);
+  const repRows = (spec.repairs || []).map((r, idx) => [
+    (idx + 1) + '.',
+    formatFullDateSlash(r.date),
+    r.vehicle || '',
+    r.description || '',
+    fmtN(r.amount || 0)
+  ]);
+  repRows.push(['', '', '', 'Total', fmtN(spec.repairTotal || 0)]);
+  doc.table(
+    [
+      { label: 'S/N', width: 12, align: 'center' },
+      { label: 'DATE', width: 26, align: 'center' },
+      { label: 'VEHICLE', width: 40 },
+      { label: 'DESCRIPTION', width: 56 },
+      { label: 'AMOUNT (N)', width: 30, align: 'right' }
+    ],
+    repRows,
+    { fontSize: 9.8 }
+  );
+
+  doc.keep(22);
+  doc.gap(2);
+  doc.rule({ color: 180 });
+  doc.gap(2);
+  doc.text('Prepared by: ' + userFullName(currentUser()) + '    Date: ' + formatDate(currentUsageDateIso()), { size: 9.8 });
+  const filename = 'TEEM_Supervisor_Return_' + String(spec.period || '').replace(/\s+/g, '_') + '.pdf';
+  const finalDoc = doc.finalize({ title: monthUpper + ' ' + yearStr + ' Supervisor Return' });
   if (!options.defer) finalDoc.save(filename);
   return { pages: doc.pages, filename: filename, doc: finalDoc, closingPushed: !!doc.closingPushed, signaturePage: doc.signaturePage, lastPageFill: doc.lastPageFill || 0 };
 }

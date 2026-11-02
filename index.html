@@ -206,6 +206,7 @@
         <div class="topbar-search">
           <span class="search-icon">&#128269;</span>
           <input type="text" id="facility-search-input" class="search-input" placeholder="Quick search any facility, street, supervisor or payer...">
+          <button type="button" class="search-clear" data-clear-for="facility-search-input" onclick="clearSearchField('facility-search-input')" title="Clear search" aria-label="Clear search">&#10005;</button>
         </div>
 
         <div class="topbar-actions">
@@ -400,7 +401,10 @@
               <button class="filter-tab" data-category="debtors" id="fac-tab-debtors" onclick="filterFacilityCategory('debtors')" style="color:var(--danger-red);background:#FEE2E2;">Outstanding</button>
             </div>
             <div style="display:flex;align-items:center;gap:10px;">
-              <input type="text" id="fac-local-search" class="form-input" style="padding:6px 12px;font-size:12.5px;width:220px;" placeholder="Filter current list...">
+              <span class="search-wrap" style="width:220px;">
+                <input type="text" id="fac-local-search" class="form-input" style="padding:6px 30px 6px 12px;font-size:12.5px;width:100%;" placeholder="Filter current list...">
+                <button type="button" class="search-clear" data-clear-for="fac-local-search" onclick="clearSearchField('fac-local-search')" title="Clear search" aria-label="Clear search">&#10005;</button>
+              </span>
               <span id="facilities-match-count" class="badge badge-category">0 entries</span>
             </div>
           </div>
@@ -438,7 +442,10 @@
           <div class="card-header-bar">
             <span class="card-title">Registered Municipal Streets</span>
             <div style="display:flex;align-items:center;gap:10px;">
-              <input type="text" id="municipal-search-input" class="form-input" style="padding:6px 12px;font-size:12.5px;width:240px;" placeholder="Search street or supervisor...">
+              <span class="search-wrap" style="width:240px;">
+                <input type="text" id="municipal-search-input" class="form-input" style="padding:6px 30px 6px 12px;font-size:12.5px;width:100%;" placeholder="Search street or supervisor...">
+                <button type="button" class="search-clear" data-clear-for="municipal-search-input" onclick="clearSearchField('municipal-search-input')" title="Clear search" aria-label="Clear search">&#10005;</button>
+              </span>
               <span id="mun-street-count" class="badge badge-category">0 Streets</span>
             </div>
           </div>
@@ -586,11 +593,14 @@
             <h3 style="font-size:14px;font-weight:800;color:var(--primary);">2. Payment Schedule Manager</h3>
             <p style="display:none;" id="req-rows-hint"></p>
 
-            <label class="req-select-all" id="req-select-all-row" style="display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:700;color:#334155;cursor:pointer;user-select:none;padding:2px 0;">
-              <input type="checkbox" id="req-select-all" onchange="toggleSelectAllRequestEntries(this)">
-              <span>Select all</span>
+            <div class="req-select-all" id="req-select-all-row" style="display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:700;color:#334155;padding:2px 0;">
+              <label style="display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none;margin:0;">
+                <input type="checkbox" id="req-select-all" onchange="toggleSelectAllRequestEntries(this)">
+                <span>Select all</span>
+              </label>
               <span id="req-selected-count" style="margin-left:auto;font-weight:600;color:#64748B;"></span>
-            </label>
+              <button type="button" class="btn btn-sm btn-danger" id="req-delete-selected" onclick="deleteSelectedRequestEntries()" title="Delete the ticked entries" style="display:none;padding:3px 9px;font-size:11.5px;white-space:nowrap;">&#128465; Delete<span class="req-del-label"></span></button>
+            </div>
 
             <div id="req-items-checklist" class="req-list"></div>
 
@@ -891,7 +901,6 @@
                 <p class="mr-section-note">Vehicle usage is auto-calculated.<strong>No of Trips &times; Rate per Trip</strong>TEEM and external vehicles.</p>
               </div>
               <div class="action-btn-group admin-only">
-                <button type="button" class="btn btn-sm btn-outline admin-only" onclick="syncMonthlyIndustrialFromLogs()" title="Import logged industrial evacuations for this month">&#128260; Sync Logged Evacuations</button>
                 <button type="button" class="btn btn-sm btn-primary admin-only" onclick="openMonthlyIndModal()">+ Add Evacuation Trip</button>
               </div>
             </div>
@@ -2282,13 +2291,10 @@ create policy "Allow public read/write for TEEM devices"
             <select id="prompt-fac-truck" class="form-select"></select>
           </div>
         </div>
-        <div style="padding:12px;background:#F0FDF4;border:1px solid #86EFAC;border-radius:10px;font-size:12.5px;color:#14532D;line-height:1.6;">
-          <strong>Select YES</strong>Evacuation date<br>
-          <strong>Select NO</strong>Keep existing details</div>
       </div>
       <div class="modal-footer">
-        <button type="button" class="btn btn-outline" onclick="confirmEvacuateFacility(false)">&#10005; No - Keep Last Record</button>
-        <button type="button" class="btn btn-primary" onclick="confirmEvacuateFacility(true)">&#10003; Yes - Evacuated Today</button>
+        <button type="button" class="btn btn-outline" onclick="confirmEvacuateFacility(false)">&#10005; No</button>
+        <button type="button" class="btn btn-primary" onclick="confirmEvacuateFacility(true)">&#10003; Yes</button>
       </div>
     </div>
   </div>
@@ -2814,9 +2820,11 @@ create policy "Allow public read/write for TEEM devices"
               <input type="date" id="mr-ind-date" class="form-input" required>
             </div>
             <div class="form-group">
-              <label class="form-label">Facility / Company Name</label>
-              <input type="text" id="mr-ind-company" class="form-input" list="mr-industrial-facilities-list" placeholder="Facility name" required>
-              <datalist id="mr-industrial-facilities-list"></datalist>
+              <label class="form-label" for="mr-ind-company">Facility / Company Name</label>
+              <select id="mr-ind-company" class="form-select" required>
+                <option value="">Select facility</option>
+              </select>
+              <input type="text" id="mr-ind-company-other" class="form-input" placeholder="Operator facility name" style="display:none;margin-top:6px;">
             </div>
           </div>
           <div class="form-grid-3" id="mr-ind-trip-grid" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;">
@@ -2834,7 +2842,7 @@ create policy "Allow public read/write for TEEM devices"
             </div>
           </div>
           <p id="mr-supervisor-rate-hint" style="display:none;font-size:12px;color:#475569;margin-top:8px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:8px;padding:8px 10px;">
-            Records facility, date, team and trips.</div>
+            Records facility, date and trips.</p>
         <div class="modal-footer">
           <button type="button" class="btn btn-outline" onclick="closeModal('modal-mr-industrial')">Cancel</button>
           <button type="submit" class="btn btn-primary">&#128190; Save Entry</button>
