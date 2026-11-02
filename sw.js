@@ -1,5 +1,5 @@
-// TEEM Service Worker - Offline PWA Support v23
-const CACHE_NAME = 'teem-concession-v23';
+// TEEM Service Worker - Offline PWA Support v1
+const CACHE_NAME = 'teem-concession-v1';
 const PRECACHE = [
   './',
   './index.html',

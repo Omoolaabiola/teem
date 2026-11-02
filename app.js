@@ -4,7 +4,7 @@
 // 100% Online & Offline Hybrid Architecture with PDF Generation & Cloud Sync
 // ============================================================================
 
-const RELEASE = '23';
+const RELEASE = '1';
 const CURRENT_SYSTEM_DATE = (function () {
   const now = new Date();
   return now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
@@ -431,14 +431,24 @@ class TEEMStore {
       f.lastPayment = f.paymentHistory.length ? f.paymentHistory[0] : null;
       if (!Array.isArray(f.evacuationHistory)) f.evacuationHistory = [];
       f.evacuationHistory.forEach((ev, idx) => {
-        if (ev && !ev.id) ev.id = 'evac-' + f.id + '-' + (ev.date || '') + '-' + idx;
+        if (ev && !ev.id) {
+          // An older record with no id: name it so it can never collide with a
+          // deletion that was recorded for the same day.
+          let candidate = 'evac-' + f.id + '-' + (ev.date || '') + '-' + idx;
+          if (delSet.has(candidate)) candidate = newEvacuationRecordId(f.id, ev.date || '');
+          ev.id = candidate;
+        }
       });
       f.evacuationHistory = f.evacuationHistory.filter(ev => ev && !delSet.has(ev.id) && !delSet.has('evac-del:' + f.id + ':' + (ev.date || '')));
     });
     (this.state.municipalStreets || []).forEach(s => {
       if (!Array.isArray(s.evacuationHistory)) s.evacuationHistory = [];
       s.evacuationHistory.forEach((ev, idx) => {
-        if (ev && !ev.id) ev.id = 'evac-' + s.id + '-' + (ev.date || '') + '-' + idx;
+        if (ev && !ev.id) {
+          let candidate = 'evac-' + s.id + '-' + (ev.date || '') + '-' + idx;
+          if (delSet.has(candidate)) candidate = newEvacuationRecordId(s.id, ev.date || '');
+          ev.id = candidate;
+        }
       });
       s.evacuationHistory = s.evacuationHistory.filter(ev => ev && !delSet.has(ev.id) && !delSet.has('evac-del:' + s.id + ':' + (ev.date || '')));
     });
@@ -3315,9 +3325,12 @@ function confirmEvacuateFacility(isYes) {
 
   const isIndustrial = f.category === 'Industrial';
   const supervisorOnRecord = isIndustrial ? INDUSTRIAL_SUPERVISOR : f.supervisor;
+  // Recording this evacuation again cancels the earlier deletion of it.
+  if (typeof forgetDeletedId === 'function') forgetDeletedId('evac-del:' + f.id + ':' + evacDate);
   f.lastEvacuated = evacDate;
   if (!Array.isArray(f.evacuationHistory)) f.evacuationHistory = [];
   f.evacuationHistory.unshift({
+    id: newEvacuationRecordId(f.id, evacDate),
     date: evacDate,
     month: evacMonth,
     truck: truckUsed,
@@ -3452,8 +3465,10 @@ function saveEvacuateStreet(e) {
   const truckUsed = document.getElementById('evac-street-truck').value;
 
   s.lastEvacuated = evacDate;
+  if (typeof forgetDeletedId === 'function') forgetDeletedId('evac-del:' + s.id + ':' + evacDate);
   if (!Array.isArray(s.evacuationHistory)) s.evacuationHistory = [];
   s.evacuationHistory.unshift({
+    id: newEvacuationRecordId(s.id, evacDate),
     date: evacDate,
     month: evacDate.slice(0, 7) === '2026-10' ? 'October 2026' : (evacDate.slice(0, 7) === '2026-09' ? 'September 2026' : 'August 2026'),
     truck: truckUsed,
@@ -5884,6 +5899,7 @@ function addCustomPaymentToSchedule(e) {
 
   // Keep the client's own payment history in step (never overwrites past records)
   if (matchedFacility) {
+    if (typeof clearPaymentMarkers === 'function') clearPaymentMarkers(matchedFacility.id, entry.date, entry.amount);
     if (!Array.isArray(matchedFacility.paymentHistory)) matchedFacility.paymentHistory = [];
     matchedFacility.paymentHistory.unshift({
       id: entry.id,
@@ -6697,7 +6713,7 @@ function saveEditFacility(e) {
     f.lastEvacuated = rawEvacDate;
     if (!f.evacuationHistory.some(h => h.date === rawEvacDate)) {
       f.evacuationHistory.unshift({
-        id: 'evac-' + f.id + '-' + rawEvacDate + '-' + Date.now().toString().slice(-4),
+        id: newEvacuationRecordId(f.id, rawEvacDate),
         date: rawEvacDate,
         month: monthLabelFromKey(rawEvacDate.slice(0, 7)) || CURRENT_MONTH_NAME,
         truck: 'Blue Compactor (TEEM-01)',
@@ -6751,6 +6767,7 @@ function saveEditFacility(e) {
       periodFrom: pFrom,
       periodTo: pTo
     };
+    if (typeof clearPaymentMarkers === 'function') clearPaymentMarkers(f.id, record.date, record.amount);
     f.paymentHistory.unshift(record);
     f.lastPayment = record;
     syncFacilityPaymentRecordToSchedule(f, record, previousName);
@@ -6944,6 +6961,7 @@ function saveLogPayment(e) {
     tariffAtPayment: Number(f.amount) || 0,
     vatAtPayment: Number(f.vat) || 0
   };
+  if (typeof clearPaymentMarkers === 'function') clearPaymentMarkers(f.id, record.date, record.amount);
   f.paymentHistory.unshift(record);
   f.lastPayment = record;
   f.updatedAt = typeof nextMonotonicIso === 'function' ? nextMonotonicIso() : new Date().toISOString();
@@ -7128,7 +7146,7 @@ function saveEditStreet(e) {
     s.lastEvacuated = rawEvacDate;
     if (!s.evacuationHistory.some(h => h.date === rawEvacDate)) {
       s.evacuationHistory.unshift({
-        id: 'evac-' + s.id + '-' + rawEvacDate + '-' + Date.now().toString().slice(-4),
+        id: newEvacuationRecordId(s.id, rawEvacDate),
         date: rawEvacDate,
         month: monthLabelFromKey(rawEvacDate.slice(0, 7)) || CURRENT_MONTH_NAME,
         truck: 'Blue Compactor (TEEM-01)',
@@ -7626,10 +7644,17 @@ function renderSettingsConsole() {
 function recordDeletedId() {
   if (!store || !store.state) return;
   if (!Array.isArray(store.state.deletedIds)) store.state.deletedIds = [];
+  if (!store.state.deletedAt || typeof store.state.deletedAt !== 'object') store.state.deletedAt = {};
+  if (!store.state.revivedAt || typeof store.state.revivedAt !== 'object') store.state.revivedAt = {};
+  const nowIso = new Date().toISOString();
   for (let i = 0; i < arguments.length; i++) {
     const id = arguments[i];
-    if (id && typeof id === 'string' && !store.state.deletedIds.includes(id)) {
-      store.state.deletedIds.push(id);
+    if (id && typeof id === 'string') {
+      if (!store.state.deletedIds.includes(id)) store.state.deletedIds.push(id);
+      // This deletion is the newest word on the record, so an earlier revival
+      // of the same marker no longer applies.
+      store.state.deletedAt[id] = nowIso;
+      delete store.state.revivedAt[id];
     }
   }
 }
@@ -7638,11 +7663,26 @@ window.recordDeletedId = recordDeletedId;
 // Undoes a tombstone: used when a record the user deleted is created again on
 // purpose (the same trip re-entered), so the deletion no longer applies.
 function forgetDeletedId(id) {
-  if (!id || !store || !store.state || !Array.isArray(store.state.deletedIds)) return;
+  if (!id || !store || !store.state) return;
+  if (!Array.isArray(store.state.deletedIds)) store.state.deletedIds = [];
+  if (!store.state.revivedAt || typeof store.state.revivedAt !== 'object') store.state.revivedAt = {};
   const at = store.state.deletedIds.indexOf(id);
   if (at !== -1) store.state.deletedIds.splice(at, 1);
+  // Stamped even when the marker is not on this device: the other copy of the
+  // data may still carry it, and this record was deliberately created again.
+  store.state.revivedAt[id] = new Date().toISOString();
+  if (store.state.deletedAt && typeof store.state.deletedAt === 'object') delete store.state.deletedAt[id];
 }
 window.forgetDeletedId = forgetDeletedId;
+
+// A payment entered again on a day/amount that was deleted earlier is a fresh,
+// deliberate entry: its deletion marker must go, or the copy inside the client
+// would be thrown away on the next sync.
+function clearPaymentMarkers(facilityId, date, amount) {
+  if (!facilityId || typeof forgetDeletedId !== 'function') return;
+  forgetDeletedId('pay-del:' + facilityId + ':' + String(date || '') + ':' + (Number(amount) || 0));
+}
+window.clearPaymentMarkers = clearPaymentMarkers;
 
 // ===========================================================================
 // DELETE A FACILITY FROM ITS OWN ROW (administrators only)
@@ -8098,6 +8138,19 @@ function smartMergeCloudState(localState, remoteRaw) {
     ...((localState.deletedIds && Array.isArray(localState.deletedIds)) ? localState.deletedIds : []),
     ...((remoteState.deletedIds && Array.isArray(remoteState.deletedIds)) ? remoteState.deletedIds : [])
   ]);
+  // A record that was deliberately created again must not be deleted by an
+  // older copy of the data, which can still carry the marker. Deletions and
+  // revivals are therefore stamped, and the newer one decides.
+  const deletedAtMap = Object.assign({}, localState.deletedAt || {}, remoteState.deletedAt || {});
+  const revivedAtMap = Object.assign({}, localState.revivedAt || {}, remoteState.revivedAt || {});
+  Object.keys(revivedAtMap).forEach(key => {
+    const revived = Date.parse(revivedAtMap[key] || 0) || 0;
+    const deleted = Date.parse(deletedAtMap[key] || 0) || 0;
+    if (revived >= deleted) deletedSet.delete(key);
+  });
+  Object.keys(revivedAtMap).forEach(key => { if (!deletedSet.has(key)) delete revivedAtMap[key]; });
+  localState.deletedAt = deletedAtMap;
+  localState.revivedAt = revivedAtMap;
   localState.deletedIds = Array.from(deletedSet);
   if (localState.deletedIds.length !== prevDelCount) changed = true;
 
@@ -10810,10 +10863,60 @@ function enforceCurrentVersionStamp() {
 // ===========================================================================
 // v22 DATA REPAIR - runs on every device, once for the one-time steps
 // ===========================================================================
+// A report row was blocked by an old deletion marker, yet the facility itself
+// holds that evacuation - the trip was recorded again after the deletion, so
+// the marker is out of date. Lifting it puts the row back where it belongs.
+function restoreRowsBlockedByStaleMarkers() {
+  let restored = 0;
+  const ids = Array.isArray(store.state.deletedIds) ? store.state.deletedIds : [];
+  const markers = ids.filter(x => typeof x === 'string' && x.indexOf('mr-del:') === 0);
+  if (!markers.length) return 0;
+  markers.forEach(mark => {
+    const body = mark.slice('mr-del:'.length);
+    if (body.indexOf('industrial:') === 0) return;      // section markers are handled by the merge
+    const cut = body.indexOf(':');
+    if (cut === -1) return;
+    const period = body.slice(0, cut);
+    const parts = body.slice(cut + 1).split('|');
+    if (parts.length < 2) return;
+    const company = parts[0].trim();
+    const date = (parts[1] || '').slice(0, 10);
+    if (!company || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+    const fac = (store.state.facilities || []).find(f => f && String(f.name || '').trim().toLowerCase() === company && f.category === 'Industrial');
+    if (!fac) return;
+    const alive = (fac.evacuationHistory || []).filter(ev => ev && String(ev.date || '').slice(0, 10) === date &&
+      !(ev.id && ids.indexOf(ev.id) !== -1));
+    if (!alive.length) return;
+    // The evacuation is real and dated the same day: keep the row.
+    forgetDeletedId(mark);
+    forgetDeletedId('mr-del:' + period + ':' + company + '|' + date);
+    forgetDeletedId('mr-del:' + period + ':' + company + '|' + date + '|teem');
+    const data = getMonthlyReportData(period);
+    const key = monthlyIndRowKey(fac.name, date, 'teem');
+    if (!(data.industrial || []).some(r => r && monthlyIndRowKey(r.company, r.date, r.group) === key)) {
+      data.industrial.push({
+        id: newMonthlyIndRowId(),
+        date: date,
+        company: fac.name,
+        trips: 1,
+        rate: isAdmin() ? INDUSTRIAL_DEFAULT_RATE : 0,
+        group: 'teem',
+        supervisor: INDUSTRIAL_SUPERVISOR,
+        updatedAt: new Date().toISOString()
+      });
+      data.updatedAt = new Date().toISOString();
+    }
+    restored += 1;
+  });
+  return restored;
+}
+
 function runV22Migrations() {
   let touched = false;
 
-  // 0. A row that was deleted anywhere stays deleted everywhere.
+  // 0a. A row that an out-of-date marker is hiding comes back first...
+  if (typeof restoreRowsBlockedByStaleMarkers === 'function' && restoreRowsBlockedByStaleMarkers() > 0) touched = true;
+  // 0b. ...then any row that really was deleted is cleared away.
   if (typeof purgeDeletedReportRows === 'function' && purgeDeletedReportRows() > 0) touched = true;
 
   // 1. A closed request list stays closed: the "previous" view is never left on.
@@ -12455,6 +12558,39 @@ function computeMonthlyReportTotals(period) {
   };
 }
 
+// Puts the report on a chosen month, adding it to the dropdown when the month
+// is new, so a saved trip is never written to a month the user cannot see.
+// Shows "Restore deleted" only when there is something to restore this month.
+function syncRestoreDeletedButton() {
+  const btn = document.getElementById('mr-restore-deleted');
+  if (!btn) return;
+  const archive = store.state.deletedReportRows || {};
+  const per = activeMonthlyReportPeriod;
+  const n = Object.keys(archive).filter(k => archive[k] && archive[k].period === per).length;
+  if (n > 0 && !isSupervisor()) {
+    btn.style.display = '';
+    btn.textContent = '\u21ba Restore deleted (' + n + ')';
+  } else {
+    btn.style.display = 'none';
+    btn.textContent = '\u21ba Restore deleted';
+  }
+}
+
+function showMonthlyReportPeriod(period) {
+  const per = String(period || '').trim();
+  if (!per) return;
+  const sel = document.getElementById('monthly-report-period-select');
+  if (sel && !sel.querySelector('option[value="' + per.replace(/"/g, '') + '"]')) {
+    const opt = document.createElement('option');
+    opt.value = per;
+    opt.textContent = per;
+    sel.appendChild(opt);
+  }
+  activeMonthlyReportPeriod = per;
+  if (sel) sel.value = per;
+  renderMonthlyReport();
+}
+
 function setMonthlyReportPeriod(period) {
   if (period) activeMonthlyReportPeriod = period;
   const sel = document.getElementById('monthly-report-period-select');
@@ -12465,6 +12601,7 @@ function setMonthlyReportPeriod(period) {
 function renderMonthlyReport() {
   const sel = document.getElementById('monthly-report-period-select');
   if (sel && sel.value) activeMonthlyReportPeriod = sel.value;
+  syncRestoreDeletedButton();
   const t = computeMonthlyReportTotals(activeMonthlyReportPeriod);
   const parts = t.period.split(' ');
   const monthUpper = (parts[0] || 'OCTOBER').toUpperCase();
@@ -12841,6 +12978,14 @@ function facilityByName(name) {
   return (store.state.facilities || []).find(f => f && String(f.name || '').trim().toLowerCase() === want) || null;
 }
 
+// Every evacuation record gets its own id for life. Ids built from the date
+// plus a position in the list collide with a record that was deleted and then
+// entered again, which made the new record vanish on the next clean-up.
+function newEvacuationRecordId(ownerId, isoDate) {
+  return 'evac-' + String(ownerId || 'rec') + '-' + String(isoDate || '').slice(0, 10) + '-' +
+    Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+}
+
 function defaultTruckName() {
   const v = (store.state.vehicles || [])[0];
   return (v && v.name) || 'Blue Compactor (TEEM-01)';
@@ -12883,6 +13028,24 @@ function rowIsDeleted(section, period, row) {
   return set.indexOf(monthlySectionTombstone(section, period, row)) !== -1;
 }
 
+// Recording the same trip again is a deliberate act: it lifts the marker that
+// was left when it was deleted earlier. Without this the row was saved and then
+// quietly dropped by the next cleanup ("trip saved, but not showing").
+function clearReportRowMarkers(period, company, date) {
+  if (typeof forgetDeletedId !== 'function') return;
+  const per = String(period || '');
+  const name = String(company || '').trim().toLowerCase();
+  const day = String(date || '').slice(0, 10);
+  forgetDeletedId('mr-del:' + per + ':' + name + '|' + day);
+  forgetDeletedId('mr-del:' + per + ':' + name + '|' + day + '|teem');
+  forgetDeletedId('mr-del:' + per + ':' + name + '|' + day + '|partner');
+}
+
+function clearSectionMarkers(section, period, row) {
+  if (typeof forgetDeletedId !== 'function' || !row) return;
+  forgetDeletedId(monthlySectionTombstone(section, period, row));
+}
+
 // Drops any report row that carries a deletion marker. Run at startup, so a
 // device that was offline when the row was deleted drops it too.
 function purgeDeletedReportRows() {
@@ -12900,19 +13063,67 @@ function purgeDeletedReportRows() {
   return removed;
 }
 
-// Takes a report row out and remembers that it was taken out.
+// Takes a report row out, remembers that it was taken out, and keeps a copy so
+// it can be put back with one tap if the deletion was a mistake.
 function removeReportRow(section, period, row) {
   const data = getMonthlyReportData(period);
   if (!Array.isArray(data[section]) || !row) return false;
   const at = data[section].indexOf(row);
   if (at === -1) return false;
-  if (row.id) recordDeletedId(row.id);
-  recordDeletedId(section === 'industrial'
+  const marker = section === 'industrial'
     ? monthlyRowTombstone(period, row.company, row.date)
-    : monthlySectionTombstone(section, period, row));
+    : monthlySectionTombstone(section, period, row);
+  if (row.id) recordDeletedId(row.id);
+  recordDeletedId(marker);
+  if (!store.state.deletedReportRows || typeof store.state.deletedReportRows !== 'object') {
+    store.state.deletedReportRows = {};
+  }
+  store.state.deletedReportRows[marker] = {
+    section: section,
+    period: period,
+    row: JSON.parse(JSON.stringify(row)),
+    at: new Date().toISOString()
+  };
+  const keys = Object.keys(store.state.deletedReportRows);
+  if (keys.length > 120) {
+    keys.sort((a, b) => String(store.state.deletedReportRows[a].at || '').localeCompare(String(store.state.deletedReportRows[b].at || '')));
+    keys.slice(0, keys.length - 120).forEach(k => { delete store.state.deletedReportRows[k]; });
+  }
   data[section].splice(at, 1);
   data.updatedAt = new Date().toISOString();
   return true;
+}
+
+// Puts back the rows of one month that were deleted, newest first.
+function restoreDeletedReportRows(period) {
+  if (!requireAdmin('Restoring deleted report rows')) return 0;
+  const archive = store.state.deletedReportRows || {};
+  const per = period || activeMonthlyReportPeriod;
+  let restored = 0;
+  Object.keys(archive).forEach(key => {
+    const item = archive[key];
+    if (!item || !item.row || item.period !== per) return;
+    const row = JSON.parse(JSON.stringify(item.row));
+    forgetDeletedId(key);
+    if (row.id) forgetDeletedId(row.id);
+    if (item.section === 'industrial') clearReportRowMarkers(per, row.company, row.date);
+    delete archive[key];
+    const data = getMonthlyReportData(per);
+    const target = monthlyReportRowKey(item.section, row);
+    const exists = (data[item.section] || []).some(r => r && monthlyReportRowKey(item.section, r) === target);
+    if (!exists) { data[item.section].push(row); restored += 1; }
+    data.updatedAt = new Date().toISOString();
+  });
+  store.state.deletedReportRows = archive;
+  if (restored) {
+    store.save();
+    if (typeof scheduleImmediateCloudPush === 'function') scheduleImmediateCloudPush();
+    showMonthlyReportPeriod(per);
+  }
+  showToast(restored
+    ? '\u21ba ' + restored + ' deleted row' + (restored === 1 ? '' : 's') + ' restored to ' + per + '.'
+    : 'Nothing to restore for ' + per + '.', restored ? 'success' : 'info');
+  return restored;
 }
 
 // Takes the report row out when the same trip is removed from the facility.
@@ -12922,11 +13133,9 @@ function removeMonthlyRowFor(company, isoDate) {
   const period = reportPeriodForDate(date);
   const data = getMonthlyReportData(period);
   const key = monthlyIndRowKey(company, date, 'teem');
-  const before = data.industrial.length;
-  data.industrial = (data.industrial || []).filter(r => monthlyIndRowKey(r.company, r.date, r.group) !== key);
-  if (data.industrial.length === before) return false;
-  if (typeof recordDeletedId === 'function') recordDeletedId(monthlyRowTombstone(period, company, date));
-  data.updatedAt = new Date().toISOString();
+  const row = (data.industrial || []).find(r => monthlyIndRowKey(r.company, r.date, r.group) === key);
+  if (!row) return false;
+  if (!removeReportRow('industrial', period, row)) return false;
   try { renderMonthlyReport(); } catch (e) {}
   return true;
 }
@@ -12964,7 +13173,7 @@ function pushEvacuationToMonthlyReport(fac, isoDate, opts) {
   };
   data.industrial.push(row);
   data.updatedAt = new Date().toISOString();
-  if (typeof forgetDeletedId === 'function') forgetDeletedId(monthlyRowTombstone(period, fac.name, date));
+  if (typeof clearReportRowMarkers === 'function') clearReportRowMarkers(period, fac.name, date);
   return row;
 }
 
@@ -13178,9 +13387,17 @@ function saveMonthlyIndEntry(ev) {
     showToast(grp === 'partner' ? '\u26a0\ufe0f Type the operator facility name.' : '\u26a0\ufe0f Select the facility from the list.', 'warning');
     return;
   }
+  const chosenDate = document.getElementById('mr-ind-date').value || currentUsageDateIso();
+  // The trip belongs to the month of its own date, never to whichever month
+  // happens to be on screen.
+  const targetPeriod = reportPeriodForDate(chosenDate);
+  if (typeof clearReportRowMarkers === 'function') {
+    clearReportRowMarkers(targetPeriod, company, chosenDate);
+  }
+  const targetData = getMonthlyReportData(targetPeriod);
   const entry = {
     id: prevEntry && prevEntry.id ? prevEntry.id : newMonthlyIndRowId(),
-    date: document.getElementById('mr-ind-date').value || currentUsageDateIso(),
+    date: chosenDate,
     company: company,
     trips: Math.max(1, Number(document.getElementById('mr-ind-trips').value) || 1),
     rate: rateVal,
@@ -13189,22 +13406,37 @@ function saveMonthlyIndEntry(ev) {
     supervisor: INDUSTRIAL_SUPERVISOR,
     updatedAt: new Date().toISOString()
   };
-  if (prevEntry) {
-    data.industrial[Number(editIdx)] = entry;
-  } else {
-    data.industrial.push(entry);
+  // A second entry for the same facility and day updates the row that is
+  // already there instead of adding a copy that looks like it never arrived.
+  const dupIdx = (targetData.industrial || []).findIndex(r => r && r !== prevEntry &&
+    monthlyIndRowKey(r.company, r.date, r.group) === monthlyIndRowKey(entry.company, entry.date, entry.group));
+  if (prevEntry && targetPeriod !== activeMonthlyReportPeriod) {
+    // The date was moved to another month: take it out of the old one.
+    const oldArr = data.industrial;
+    const at = oldArr.indexOf(prevEntry);
+    if (at !== -1) oldArr.splice(at, 1);
+    data.updatedAt = new Date().toISOString();
   }
-  data.updatedAt = new Date().toISOString();
+  if (prevEntry && data === targetData) {
+    data.industrial[Number(editIdx)] = entry;
+  } else if (dupIdx !== -1) {
+    entry.id = targetData.industrial[dupIdx].id || entry.id;
+    targetData.industrial[dupIdx] = entry;
+  } else {
+    targetData.industrial.push(entry);
+  }
+  targetData.updatedAt = new Date().toISOString();
   // The same trip is written to the facility, straight away.
   const linkedFacility = grp === 'partner' ? null : applyMonthlyRowToFacility(entry, prevEntry);
   store.save();
+  if (typeof scheduleImmediateCloudPush === 'function') scheduleImmediateCloudPush();
   closeModal('modal-mr-industrial');
-  renderMonthlyReport();
+  showMonthlyReportPeriod(targetPeriod);
   try { if (currentActiveView === 'facilities') renderFacilitiesDirectory(); } catch (e) {}
   try { renderEvacuations(); } catch (e) {}
   showToast(linkedFacility
-    ? '\u2705 Trip saved. ' + linkedFacility.status + ' evacuation written to ' + entry.company + '.'
-    : '\u2705 Industrial evacuation trip saved.', 'success');
+    ? '\u2705 Saved to ' + targetPeriod + '. ' + entry.company + ' evacuation updated.'
+    : '\u2705 Saved to ' + targetPeriod + ' \u2014 ' + entry.company + ', ' + entry.trips + ' trip' + (entry.trips === 1 ? '' : 's') + '.', 'success');
 }
 
 function deleteMonthlyIndEntry(idx) {
@@ -13259,6 +13491,7 @@ function saveMonthlySalaryEntry(ev) {
     accountNumber: (document.getElementById('mr-sal-acct').value || '').trim(),
     amount: Math.max(0, Number(document.getElementById('mr-sal-amount').value) || 0)
   };
+  if (typeof clearSectionMarkers === 'function') clearSectionMarkers('salaries', activeMonthlyReportPeriod, entry);
   if (editIdx !== '' && data.salaries[Number(editIdx)]) data.salaries[Number(editIdx)] = entry;
   else data.salaries.push(entry);
   data.updatedAt = new Date().toISOString();
@@ -13323,6 +13556,7 @@ function saveMonthlyMunicipalEntry(ev) {
     teemAmount: Math.max(0, Number(document.getElementById('mr-mun-teem').value) || 0),
     ogwamaAmount: Math.max(0, Number(document.getElementById('mr-mun-ogwama').value) || 0)
   };
+  if (typeof clearSectionMarkers === 'function') clearSectionMarkers('municipal', activeMonthlyReportPeriod, entry);
   if (editIdx !== '' && data.municipal[Number(editIdx)]) data.municipal[Number(editIdx)] = entry;
   else data.municipal.push(entry);
   data.updatedAt = new Date().toISOString();
@@ -13383,6 +13617,7 @@ function saveMonthlyFuelEntry(ev) {
     litres: Math.max(0.5, Number(document.getElementById('mr-fuel-litres').value) || 0),
     rate: Math.max(0, Number(document.getElementById('mr-fuel-rate').value) || 0)
   };
+  if (typeof clearSectionMarkers === 'function') clearSectionMarkers('fuel', activeMonthlyReportPeriod, entry);
   if (editIdx !== '' && data.fuel[Number(editIdx)]) data.fuel[Number(editIdx)] = entry;
   else data.fuel.push(entry);
   data.updatedAt = new Date().toISOString();
@@ -13431,6 +13666,7 @@ function saveMonthlyRepairEntry(ev) {
     description: (document.getElementById('mr-rep-desc').value || '').trim(),
     amount: Math.max(0, Number(document.getElementById('mr-rep-amount').value) || 0)
   };
+  if (typeof clearSectionMarkers === 'function') clearSectionMarkers('repairs', activeMonthlyReportPeriod, entry);
   if (editIdx !== '' && data.repairs[Number(editIdx)]) data.repairs[Number(editIdx)] = entry;
   else data.repairs.push(entry);
   data.updatedAt = new Date().toISOString();
