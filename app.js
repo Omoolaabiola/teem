@@ -1,10 +1,10 @@
 // ============================================================================
-// TEEM WASTE MANAGEMENT SYSTEM - CORE ENGINE v1
+// TEEM WASTE MANAGEMENT SYSTEM - CORE ENGINE v2
 // Teem Business Nigeria Enterprises (RC OG20434) - OGWAMA PSP Concession
 // 100% Online & Offline Hybrid Architecture with PDF Generation & Cloud Sync
 // ============================================================================
 
-const RELEASE = '1';
+const RELEASE = '2';
 const CURRENT_SYSTEM_DATE = (function () {
   const now = new Date();
   return now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
