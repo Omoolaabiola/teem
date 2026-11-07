@@ -4032,3 +4032,9 @@ a[href*="netlify"] .netlify-badge,
   .req-hist-actions{width:100%;}
   .req-hist-actions .btn{flex:1;}
 }
+
+
+/* ===== v6: Fuel "Amount per litre" is a plain typing box (no stepper arrows) ===== */
+#mr-fuel-rate::-webkit-outer-spin-button,
+#mr-fuel-rate::-webkit-inner-spin-button { -webkit-appearance:none; appearance:none; margin:0; }
+#mr-fuel-rate { -moz-appearance:textfield; appearance:textfield; }
