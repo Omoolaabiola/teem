@@ -4,7 +4,7 @@
 // 100% Online & Offline Hybrid Architecture with PDF Generation & Cloud Sync
 // ============================================================================
 
-const RELEASE = '6';
+const RELEASE = '7';
 const CURRENT_SYSTEM_DATE = (function () {
   const now = new Date();
   return now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
@@ -8211,7 +8211,6 @@ function mergeMonthlyReportRows(locRep, remRep, deletedSet, period) {
   let changed = false;
   const locTs = Date.parse(locRep.updatedAt || 0) || 0;
   const remTs = Date.parse(remRep.updatedAt || 0) || 0;
-  const remoteIsNewer = remTs > locTs;
   Object.keys(MR_ROW_KEY_FIELDS).forEach(section => {
     if (!Array.isArray(locRep[section])) locRep[section] = [];
     const remRows = Array.isArray(remRep[section]) ? remRep[section] : [];
@@ -8262,7 +8261,12 @@ function mergeMonthlyReportRows(locRep, remRep, deletedSet, period) {
         const idx = positions.get(key);
         const locRow = locRep[section][idx];
         if (JSON.stringify(locRow) === JSON.stringify(remRow)) return;
-        if (remoteIsNewer) {
+        // The row's own save time decides, never the month's. An edit must
+        // survive another device saving a different part of the same month
+        // afterwards - that is what kept reverting edited amounts.
+        const locRowTs = Date.parse((locRow && (locRow.savedAt || locRow.updatedAt)) || 0) || 0;
+        const remRowTs = Date.parse((remRow && (remRow.savedAt || remRow.updatedAt)) || 0) || 0;
+        if (remRowTs > locRowTs) {
           locRep[section][idx] = JSON.parse(JSON.stringify(remRow));
           changed = true;
         }
@@ -12571,25 +12575,48 @@ function defaultMonthlyReportsSeed() {
   };
 }
 
+function monthlyReportPeriodSortKey(period) {
+  const months = { january: 1, february: 2, march: 3, april: 4, may: 5, june: 6, july: 7, august: 8, september: 9, october: 10, november: 11, december: 12 };
+  const m = String(period || '').trim().match(/^([A-Za-z]+)\s+(\d{4})$/);
+  if (!m || !months[m[1].toLowerCase()]) return '';
+  return m[2] + String(months[m[1].toLowerCase()]).padStart(2, '0');
+}
+
+// The schedule a new month opens with: the most recent month the owner has
+// already saved salaries in. Only a brand-new install with nothing saved
+// anywhere falls back to the starter schedule.
+function latestSavedSalarySchedule(excludePeriod) {
+  const reports = store.state.monthlyReports || {};
+  let bestKey = '';
+  let best = null;
+  Object.keys(reports).forEach(period => {
+    if (period === excludePeriod) return;
+    const rec = reports[period];
+    if (!rec || !Array.isArray(rec.salaries) || !rec.salaries.length) return;
+    const k = monthlyReportPeriodSortKey(period) || ('zz' + period);
+    if (k >= bestKey) { bestKey = k; best = rec.salaries; }
+  });
+  if (best) return JSON.parse(JSON.stringify(best));
+  return JSON.parse(JSON.stringify(defaultMonthlyReportsSeed()['October 2026'].salaries));
+}
+
 function getMonthlyReportData(period) {
   const p = period || activeMonthlyReportPeriod || CURRENT_MONTH_NAME || 'October 2026';
   if (!store.state.monthlyReports || typeof store.state.monthlyReports !== 'object') {
-    store.state.monthlyReports = defaultMonthlyReportsSeed();
+    store.state.monthlyReports = {};
   }
-  const seeds = defaultMonthlyReportsSeed();
   if (!store.state.monthlyReports[p]) {
-    if (seeds[p]) {
-      store.state.monthlyReports[p] = JSON.parse(JSON.stringify(seeds[p]));
-    } else {
-      store.state.monthlyReports[p] = {
-        partnerTitle: 'JIB & JIB',
-        industrial: [],
-        salaries: JSON.parse(JSON.stringify(seeds['October 2026'].salaries)),
-        municipal: [],
-        fuel: [],
-        repairs: []
-      };
-    }
+    // A new month starts empty except for the salary schedule, which carries
+    // forward from the most recent saved month. Built-in sample rows are never
+    // planted again: the report holds only what the owner entered.
+    store.state.monthlyReports[p] = {
+      partnerTitle: 'JIB & JIB',
+      industrial: [],
+      salaries: latestSavedSalarySchedule(p),
+      municipal: [],
+      fuel: [],
+      repairs: []
+    };
   }
   const rec = store.state.monthlyReports[p];
   if (!Array.isArray(rec.industrial)) rec.industrial = [];

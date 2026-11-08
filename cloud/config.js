@@ -1,5 +1,5 @@
 // ============================================================================
-// TEEM Waste Management System v6 — Built-In Multi-Device Cloud Sync Config
+// TEEM Waste Management System v7 — Built-In Multi-Device Cloud Sync Config
 // ============================================================================
 // Permanently configured with TEEM Business Nigeria Enterprises' official
 // Supabase Project URL + Publishable Key and Google Apps Script Web App URL.
