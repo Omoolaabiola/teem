@@ -4,7 +4,7 @@
 // 100% Online & Offline Hybrid Architecture with PDF Generation & Cloud Sync
 // ============================================================================
 
-const RELEASE = '7';
+const RELEASE = '8';
 const CURRENT_SYSTEM_DATE = (function () {
   const now = new Date();
   return now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
@@ -49,17 +49,30 @@ const SafeStorage = {
   },
   set(key, value) {
     this.fallback[key] = value;
+    if (!this.available) return;
     try {
-      if (this.available) {
+      window.localStorage.setItem(key, value);
+      this.lastWriteOk = true;
+    } catch (e) {
+      // Device storage is full. The rolling backups are the heaviest thing
+      // held here and the cloud already holds the same data, so they are
+      // dropped first: freeing them is what lets a full phone keep saving the
+      // live records.
+      try {
+        window.localStorage.removeItem('TEEM_BACKUP_CHECKPOINTS_v1');
+        if (key !== 'TEEM_AUTO_BACKUP_MIRROR_v1') window.localStorage.removeItem('TEEM_AUTO_BACKUP_MIRROR_v1');
         window.localStorage.setItem(key, value);
         this.lastWriteOk = true;
-      }
-    } catch (e) {
-      // Device storage is full or blocked. The copy in memory still works for
-      // this visit, but it will be gone after a reload - so say so, loudly.
+        return;
+      } catch (e2) { /* still no room */ }
+      // The copy in memory still works for this visit, but it will be gone
+      // after a reload - so say so once, not on every keystroke.
       this.lastWriteOk = false;
-      if (typeof showToast === 'function') {
-        try { showToast('\u26a0\ufe0f This device is out of storage. Tap Save at the top to keep a copy.', 'warning'); } catch (e2) {}
+      if (!this._storageWarned) {
+        this._storageWarned = true;
+        if (typeof showToast === 'function') {
+          try { showToast('\u26a0\ufe0f This device is out of storage. Tap Save at the top to keep a copy.', 'warning'); } catch (e3) {}
+        }
       }
     }
   },
@@ -464,7 +477,17 @@ class TEEMStore {
       s.evacuationHistory = s.evacuationHistory.filter(ev => ev && !delSet.has(ev.id) && !delSet.has('evac-del:' + s.id + ':' + (ev.date || '')));
     });
     if (!Array.isArray(this.state.paymentScheduleRecords)) this.state.paymentScheduleRecords = [];
+    if (!Array.isArray(this.state.evacuationLogs)) this.state.evacuationLogs = [];
     this.syncScheduleFromHistory();
+    // v8: the GPS trail never stopped growing and it is pure display data.
+    if (this.state.fleetTracking && Array.isArray(this.state.fleetTracking.positions) &&
+        this.state.fleetTracking.positions.length > 1200) {
+      this.state.fleetTracking.positions = this.state.fleetTracking.positions.slice(-1200);
+    }
+    if (this.state.fleetTracking && Array.isArray(this.state.fleetTracking.stops) &&
+        this.state.fleetTracking.stops.length > 200) {
+      this.state.fleetTracking.stops = this.state.fleetTracking.stops.slice(-200);
+    }
   }
 
   // Guarantees that EVERY payment ever recorded for a client is offered in the
@@ -2563,6 +2586,50 @@ function monthNumberFromToken(token) {
   return map[w] || 0;
 }
 
+// One typing slip must not cost a month: "Auf" is Aug, "Juen" is June. A
+// substitution, an insertion, a deletion or a swapped pair each count as one
+// mistake.
+function editDistance(a, b) {
+  const s = String(a || ''), t = String(b || '');
+  const d = [];
+  for (let i = 0; i <= s.length; i++) d[i] = [i];
+  for (let j = 0; j <= t.length; j++) d[0][j] = j;
+  for (let i = 1; i <= s.length; i++) {
+    for (let j = 1; j <= t.length; j++) {
+      const cost = s[i - 1] === t[j - 1] ? 0 : 1;
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cost);
+      if (i > 1 && j > 1 && s[i - 1] === t[j - 2] && s[i - 2] === t[j - 1]) {
+        d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+      }
+    }
+  }
+  return d[s.length][t.length];
+}
+
+// Reads a word the exact month rules did not recognise and returns the month
+// it was most likely meant to be, or 0 when it is not month-like at all.
+function fuzzyMonthNumber(word) {
+  const w = String(word || '').toLowerCase().replace(/[^a-z]/g, '');
+  if (w.length < 3 || w.length > 12) return 0;
+  const abbr = [['jan', 1], ['feb', 2], ['mar', 3], ['apr', 4], ['may', 5], ['jun', 6],
+    ['jul', 7], ['aug', 8], ['sep', 9], ['oct', 10], ['nov', 11], ['dec', 12]];
+  const full = [['january', 1], ['february', 2], ['march', 3], ['april', 4], ['may', 5],
+    ['june', 6], ['july', 7], ['august', 8], ['september', 9], ['october', 10],
+    ['november', 11], ['december', 12]];
+  let best = 0, bestDist = 99;
+  abbr.forEach(function (pair) {
+    const d = editDistance(w, pair[0]);
+    if (d <= 1 && d < bestDist) { bestDist = d; best = pair[1]; }
+  });
+  if (best) return best;
+  full.forEach(function (pair) {
+    const d = editDistance(w, pair[0]);
+    const allowed = w.length <= 4 ? 1 : 2;
+    if (d <= allowed && d < bestDist) { bestDist = d; best = pair[1]; }
+  });
+  return best;
+}
+
 function periodIndexFromParts(year, monthNum) {
   return (Number(year) - PERIOD_BASE_YEAR) * 12 + Number(monthNum);
 }
@@ -2612,13 +2679,21 @@ function parsePeriodLabel(label, referenceIso) {
     if (short) year = 2000 + Number(short[1]);
   }
 
-  const re = /\b(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*/g;
+  const re = /^(jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)/;
   const found = [];
-  let m;
-  while ((m = re.exec(s)) !== null) {
-    const num = monthNumberFromToken(m[1]);
-    if (num) found.push(num);
-  }
+  s.split(/[^a-z'\u2019]+/).forEach(function (tok) {
+    if (!tok) return;
+    const exact = re.exec(tok);
+    if (exact) {
+      const num = monthNumberFromToken(exact[1]);
+      if (num && found.indexOf(num) === -1) found.push(num);
+      return;
+    }
+    // A word the exact rules did not read can still be a mistyped month.
+    if (tok.length < 3) return;
+    const num = fuzzyMonthNumber(tok);
+    if (num && found.indexOf(num) === -1) found.push(num);
+  });
   if (!found.length) return null;
 
   // Lowest and highest month named, so "Sept - Dec" and "Dec/Sept" both read
@@ -2639,6 +2714,22 @@ function parsePeriodLabel(label, referenceIso) {
 function periodIndexOf(label) {
   const parsed = parsePeriodLabel(label);
   return parsed ? parsed.end : 0;
+}
+
+function periodLabelFromIndex(idx) {
+  const n = Math.round(Number(idx) || 0);
+  if (n <= 0) return '';
+  const monthNum = ((n - 1) % 12 + 12) % 12 + 1;
+  const year = PERIOD_BASE_YEAR + Math.floor((n - 1) / 12);
+  return (MONTH_ORDER[monthNum - 1] || '') + ' ' + year;
+}
+
+// The payment month the owner types is the power. "Aug/Sept", "Jan - May" or a
+// mistyped "Auf" all become the first and last month actually covered.
+function periodLabelsFromMonthText(monthText, payDateIso) {
+  const parsed = parsePeriodLabel(monthText, payDateIso);
+  if (!parsed || !parsed.start || !parsed.end) return null;
+  return { from: periodLabelFromIndex(parsed.start), to: periodLabelFromIndex(parsed.end) };
 }
 
 
@@ -5619,7 +5710,7 @@ function removePaymentFromSchedule(id) {
   // the schedule has to remove that copy too, or it comes back on the next sync.
   if (entry) {
     (store.state.facilities || []).forEach(f => {
-      if (!f || f.name !== entry.outlet || !Array.isArray(f.paymentHistory)) return;
+      if (!f || !namesReferToSameFacility(f.name, entry.outlet) || !Array.isArray(f.paymentHistory)) return;
       const before = f.paymentHistory.length;
       f.paymentHistory = f.paymentHistory.filter(h => {
         if (!h) return false;
@@ -5755,7 +5846,7 @@ function saveEditSchedulePayment(e) {
   if (amount <= 0) { showToast('\u26a0\ufe0f Enter the amount that was actually paid.', 'error'); return; }
 
   const previousOutlet = entry.outlet;
-  const matchedFacility = isMunicipal ? null : (store.state.facilities || []).find(f => f.name === outlet);
+  const matchedFacility = isMunicipal ? null : facilityByFuzzyName(outlet);
   const matchedStreet = (store.state.municipalStreets || []).find(s => s.name === outlet);
 
   entry.outlet = outlet;
@@ -5789,12 +5880,13 @@ function saveEditSchedulePayment(e) {
   if (matchedFacility) {
     if (!Array.isArray(matchedFacility.paymentHistory)) matchedFacility.paymentHistory = [];
     const record = histEntry || { id: id };
+    const derivedPeriod = periodLabelsFromMonthText(month, payDate);
     record.payerName = depositor;
     record.amount = amount;
     record.date = payDate;
     record.month = month;
-    record.periodFrom = month;
-    record.periodTo = month;
+    record.periodFrom = derivedPeriod ? derivedPeriod.from : month;
+    record.periodTo = derivedPeriod ? derivedPeriod.to : month;
     if (!histEntry) matchedFacility.paymentHistory.unshift(record);
     matchedFacility.lastPayment = matchedFacility.paymentHistory[0];
   }
@@ -5899,7 +5991,7 @@ function addCustomPaymentToSchedule(e) {
     return;
   }
 
-  const matchedFacility = isMunicipal ? null : store.state.facilities.find(f => f.name === outlet);
+  const matchedFacility = isMunicipal ? null : facilityByFuzzyName(outlet);
   const matchedStreet = isMunicipal ? null : store.state.municipalStreets.find(s => s.name === outlet);
   const category = isMunicipal ? 'Municipal' : (matchedFacility ? matchedFacility.category : (matchedStreet ? 'Municipal' : activeRequestCategory));
 
@@ -5928,14 +6020,15 @@ function addCustomPaymentToSchedule(e) {
   if (matchedFacility) {
     if (typeof clearPaymentMarkers === 'function') clearPaymentMarkers(matchedFacility.id, entry.date, entry.amount);
     if (!Array.isArray(matchedFacility.paymentHistory)) matchedFacility.paymentHistory = [];
+    const derivedPeriod = periodLabelsFromMonthText(entry.month, entry.date);
     matchedFacility.paymentHistory.unshift({
       id: entry.id,
       payerName: entry.depositor,
       amount: entry.amount,
       date: entry.date,
       month: entry.month,
-      periodFrom: month,
-      periodTo: month
+      periodFrom: derivedPeriod ? derivedPeriod.from : entry.month,
+      periodTo: derivedPeriod ? derivedPeriod.to : entry.month
     });
     matchedFacility.lastPayment = matchedFacility.paymentHistory[0];
   }
@@ -6559,8 +6652,6 @@ function onEditFacPaymentRecordChange(val) {
     document.getElementById('edit-fac-pay-amount').value = '';
     document.getElementById('edit-fac-pay-date').value = currentUsageDateIso();
     document.getElementById('edit-fac-pay-month').value = CURRENT_MONTH_PLAIN;
-    document.getElementById('edit-fac-period-from').value = CURRENT_MONTH_NAME;
-    document.getElementById('edit-fac-period-to').value = CURRENT_MONTH_NAME;
     if (delBtn) delBtn.style.display = 'none';
   } else if (val === 'new' || !history.length) {
     const latest = latestPayment(f) || {};
@@ -6568,8 +6659,6 @@ function onEditFacPaymentRecordChange(val) {
     document.getElementById('edit-fac-pay-amount').value = calcTotalWithVat(f.amount, f.vat) || latest.amount || 0;
     document.getElementById('edit-fac-pay-date').value = currentUsageDateIso();
     document.getElementById('edit-fac-pay-month').value = CURRENT_MONTH_PLAIN;
-    document.getElementById('edit-fac-period-from').value = CURRENT_MONTH_NAME;
-    document.getElementById('edit-fac-period-to').value = CURRENT_MONTH_NAME;
     if (delBtn) delBtn.style.display = 'none';
   } else {
     const idx = parseInt(val, 10);
@@ -6578,8 +6667,6 @@ function onEditFacPaymentRecordChange(val) {
     document.getElementById('edit-fac-pay-amount').value = rec.amount !== undefined ? rec.amount : calcTotalWithVat(f.amount, f.vat);
     document.getElementById('edit-fac-pay-date').value = rec.date || currentUsageDateIso();
     document.getElementById('edit-fac-pay-month').value = rec.month || rec.periodTo || CURRENT_MONTH_NAME;
-    document.getElementById('edit-fac-period-from').value = rec.periodFrom || CURRENT_MONTH_NAME;
-    document.getElementById('edit-fac-period-to').value = rec.periodTo || CURRENT_MONTH_NAME;
     if (delBtn) delBtn.style.display = 'inline-flex';
   }
 }
@@ -6607,7 +6694,7 @@ function deleteFacilityPaymentRecord(facilityId, recordIdx, stayInEditModal) {
       store.state.paymentScheduleRecords = store.state.paymentScheduleRecords.filter(p => {
         if (!p) return false;
         const matches = (removed.id && p.id === removed.id) ||
-          (p.outlet === f.name && Number(p.amount) === Number(removed.amount) && p.date === removed.date);
+          (namesReferToSameFacility(p.outlet, f.name) && Number(p.amount) === Number(removed.amount) && p.date === removed.date);
         // The schedule copy is deleted as well, and it must stay deleted.
         if (matches && typeof recordDeletedId === 'function') recordDeletedId(p.id);
         return !matches;
@@ -6760,8 +6847,10 @@ function saveEditFacility(e) {
   const payAmount = Number(rawPayAmtStr) || 0;
   const payDate = document.getElementById('edit-fac-pay-date').value || currentUsageDateIso();
   const payMonth = document.getElementById('edit-fac-pay-month').value.trim() || CURRENT_MONTH_NAME;
-  const pFrom = document.getElementById('edit-fac-period-from').value || CURRENT_MONTH_NAME;
-  const pTo = document.getElementById('edit-fac-period-to').value || CURRENT_MONTH_NAME;
+  // The typed payment month decides what the payment covers.
+  const derivedPeriod = periodLabelsFromMonthText(payMonth, payDate);
+  const pFrom = derivedPeriod ? derivedPeriod.from : (payMonth || CURRENT_MONTH_NAME);
+  const pTo = derivedPeriod ? derivedPeriod.to : (payMonth || CURRENT_MONTH_NAME);
 
   if (!Array.isArray(f.paymentHistory)) f.paymentHistory = [];
   const modeSel = document.getElementById('edit-fac-pay-record-select');
@@ -6899,8 +6988,6 @@ function onLogPaymentModeChange(val) {
     document.getElementById('pay-date').value = currentUsageDateIso();
     document.getElementById('pay-payer').value = f.name;
     if (document.getElementById('pay-month')) document.getElementById('pay-month').value = CURRENT_MONTH_PLAIN;
-    if (document.getElementById('pay-period-from')) document.getElementById('pay-period-from').value = CURRENT_MONTH_NAME;
-    if (document.getElementById('pay-period-to')) document.getElementById('pay-period-to').value = CURRENT_MONTH_NAME;
   } else {
     const idx = parseInt(val, 10);
     const rec = history[idx] || history[0] || {};
@@ -6908,8 +6995,6 @@ function onLogPaymentModeChange(val) {
     document.getElementById('pay-date').value = rec.date || currentUsageDateIso();
     document.getElementById('pay-payer').value = rec.payerName || f.name;
     if (document.getElementById('pay-month')) document.getElementById('pay-month').value = rec.month || rec.periodTo || CURRENT_MONTH_NAME;
-    if (document.getElementById('pay-period-from')) document.getElementById('pay-period-from').value = rec.periodFrom || CURRENT_MONTH_NAME;
-    if (document.getElementById('pay-period-to')) document.getElementById('pay-period-to').value = rec.periodTo || CURRENT_MONTH_NAME;
   }
 }
 window.onLogPaymentModeChange = onLogPaymentModeChange;
@@ -6946,8 +7031,10 @@ function saveLogPayment(e) {
   const payer = document.getElementById('pay-payer').value.trim() || f.name;
   const monthEl = document.getElementById('pay-month');
   const payMonth = monthEl ? (monthEl.value.trim() || CURRENT_MONTH_NAME) : CURRENT_MONTH_NAME;
-  const pFrom = document.getElementById('pay-period-from').value;
-  const pTo = document.getElementById('pay-period-to').value;
+  // The typed payment month decides what the payment covers.
+  const derivedPeriod = periodLabelsFromMonthText(payMonth, payDate);
+  const pFrom = derivedPeriod ? derivedPeriod.from : (payMonth || CURRENT_MONTH_NAME);
+  const pTo = derivedPeriod ? derivedPeriod.to : (payMonth || CURRENT_MONTH_NAME);
 
   if (!Array.isArray(f.paymentHistory)) f.paymentHistory = [];
   const modeSel = document.getElementById('pay-record-mode-select');
@@ -8876,6 +8963,16 @@ function smartMergeCloudState(localState, remoteRaw) {
     }
   }
 
+  // v8: whatever the cloud brought in, the directory tallies with the report
+  // and with the payment schedule afterwards.
+  try {
+    if (typeof reconcileDirectoryEvacuationsFromReport === 'function' &&
+        reconcileDirectoryEvacuationsFromReport(localState)) changed = true;
+  } catch (eTally) {}
+  try {
+    if (typeof reconcileSchedulePaymentsToFacilities === 'function' &&
+        reconcileSchedulePaymentsToFacilities(localState)) changed = true;
+  } catch (eTally2) {}
   if (changed) {
     syncSupervisorsFromUsers();
     store.save({ fromCloudMerge: true });
@@ -9605,6 +9702,15 @@ function runAutoBackupTick(isManual) {
       state: snapshot.state
     });
     if (checkpoints.length > 8) checkpoints = checkpoints.slice(0, 8);
+    // A phone keeps the data of the newest checkpoint only; the rest keep their
+    // labels. Eight full copies of everything were what filled the iPhone.
+    if (!(window.TEEM_DESKTOP_RUNTIME && window.TEEM_DESKTOP_RUNTIME.writeAutoBackup)) {
+      checkpoints = checkpoints.map(function (c, i) {
+        if (i === 0 || !c) return c;
+        return { id: c.id, savedAt: c.savedAt, reason: c.reason, signature: c.signature,
+          facilitiesCount: c.facilitiesCount, paymentsCount: c.paymentsCount };
+      });
+    }
     SafeStorage.set(AUTO_BACKUP_CHECKPOINTS_KEY, JSON.stringify(checkpoints));
   }
 
@@ -10523,15 +10629,8 @@ function renderCurrentView() {
 // 20. BOOT
 // ===========================================================================
 function populatePeriodDropdowns() {
-  const optionsHtml = ALL_PERIODS.map(m => '<option value="' + m + '">' + m + '</option>').join('');
-  ['edit-fac-period-from', 'edit-fac-period-to', 'add-fac-period-from', 'add-fac-period-to',
-   'pay-period-from', 'pay-period-to'].forEach(id => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    const previous = el.value;
-    el.innerHTML = optionsHtml;
-    el.value = previous || CURRENT_MONTH_NAME;
-  });
+  // v8: the Coverage From / To dropdowns are gone. The payment month the
+  // owner types is the single source of truth for what a payment covers.
 
   const now = new Date();
   const weekdays = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -11174,6 +11273,17 @@ let teemBooted = false;
 function bootTeemOnce() {
   if (teemBooted) return;
   teemBooted = true;
+  // v8: bring the directory into line with the monthly report and the payment
+  // schedule before the first screen is drawn. This runs after every module is
+  // initialised, so nothing is in a half-defined state.
+  let tallied = 0;
+  try {
+    if (typeof reconcileDirectoryEvacuationsFromReport === 'function') tallied += reconcileDirectoryEvacuationsFromReport(store.state);
+  } catch (eTally) {}
+  try {
+    if (typeof reconcileSchedulePaymentsToFacilities === 'function') tallied += reconcileSchedulePaymentsToFacilities(store.state);
+  } catch (eTally2) {}
+  if (tallied > 0) { try { store.save(); } catch (eSave) {} }
   bootTeem();
 }
 
@@ -13182,6 +13292,126 @@ function renderMonthlyReport() {
 // ===========================================================================
 function industrialFacilityList() {
   return (store.state.facilities || []).filter(f => f && f.category === 'Industrial');
+}
+
+// Records name the same client in slightly different ways ("Niger Biscuits"
+// / "Niger Biscuits Company Ltd"). Exact spelling first, then a clear prefix.
+function namesReferToSameFacility(a, b) {
+  const x = cleanKeyPart(a), y = cleanKeyPart(b);
+  if (!x || !y) return false;
+  if (x === y) return true;
+  if (x.length >= 8 && y.length >= 8 && (x.indexOf(y) === 0 || y.indexOf(x) === 0)) return true;
+  return false;
+}
+
+function facilityByFuzzyName(name, stateIn) {
+  const facs = (stateIn && stateIn.facilities) ? stateIn.facilities
+    : ((store && store.state && store.state.facilities) ? store.state.facilities : []);
+  const target = cleanKeyPart(name);
+  if (!target) return null;
+  const exact = facs.find(f => f && cleanKeyPart(f.name) === target);
+  if (exact) return exact;
+  return facs.find(f => f && namesReferToSameFacility(f.name, name)) || null;
+}
+
+// A deletion only wins while it is newer than the record in front of it.
+function deletionBeatsTs(state, marker, recTs) {
+  const delTs = Date.parse((state && state.deletedAt && state.deletedAt[marker]) || 0) || 0;
+  if (!delTs) return false;
+  return delTs > (Date.parse(recTs || 0) || 0);
+}
+
+// The monthly report is the record of truth for industrial evacuations: every
+// trip row the owner entered stands on the facility's own page, and the
+// built-in sample dates are dropped so the directory tallies with the report.
+function reconcileDirectoryEvacuationsFromReport(stateIn) {
+  const state = stateIn || store.state;
+  if (!state) return 0;
+  const delSet = new Set(Array.isArray(state.deletedIds) ? state.deletedIds : []);
+  let changed = 0;
+  (state.facilities || []).forEach(function (fac) {
+    if (!fac || fac.category !== 'Industrial' || !Array.isArray(fac.evacuationHistory)) return;
+    const before = fac.evacuationHistory.length;
+    fac.evacuationHistory = fac.evacuationHistory.filter(function (e) {
+      return e && String(e.id || '').slice(0, 10) !== 'evac-seed-';
+    });
+    if (fac.evacuationHistory.length !== before) changed += 1;
+  });
+  Object.keys(state.monthlyReports || {}).forEach(function (period) {
+    const rec = state.monthlyReports[period];
+    if (!rec || !Array.isArray(rec.industrial)) return;
+    rec.industrial.forEach(function (row) {
+      if (!row || row.group === 'partner') return;
+      const date = String(row.date || '').slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+      const fac = facilityByFuzzyName(row.company, state);
+      if (!fac || fac.category !== 'Industrial') return;
+      if (!Array.isArray(fac.evacuationHistory)) fac.evacuationHistory = [];
+      if (fac.evacuationHistory.some(function (h) { return h && String(h.date || '').slice(0, 10) === date; })) return;
+      if (delSet.has('evac-del:' + fac.id + ':' + date) &&
+          deletionBeatsTs(state, 'evac-del:' + fac.id + ':' + date, row.updatedAt || row.savedAt)) return;
+      fac.evacuationHistory.push({
+        id: 'evac-mr-' + (row.id || (cleanKeyPart(period) + '-' + date + '-' + cleanKeyPart(row.company))),
+        date: date,
+        month: monthLabelFromKey(date.slice(0, 7)) || period,
+        truck: defaultTruckName(),
+        supervisor: row.supervisor || INDUSTRIAL_SUPERVISOR,
+        tonnage: fac.amount ? (fac.amount / 16000).toFixed(1) : null,
+        status: 'Verified Complete'
+      });
+      changed += 1;
+    });
+  });
+  (state.facilities || []).forEach(function (fac) {
+    if (!fac || fac.category !== 'Industrial' || !Array.isArray(fac.evacuationHistory)) return;
+    fac.evacuationHistory.sort(function (a, b) { return String(b.date || '').localeCompare(String(a.date || '')); });
+    const latest = fac.evacuationHistory.length ? String(fac.evacuationHistory[0].date || '') : '';
+    if (fac.lastEvacuated !== latest) { fac.lastEvacuated = latest; changed += 1; }
+  });
+  return changed;
+}
+
+// Every payment that has ever been requested of a facility also stands on the
+// facility's own payment page. Nothing is ever removed here.
+function reconcileSchedulePaymentsToFacilities(stateIn) {
+  const state = stateIn || store.state;
+  if (!state) return 0;
+  const delSet = new Set(Array.isArray(state.deletedIds) ? state.deletedIds : []);
+  let changed = 0;
+  (state.paymentScheduleRecords || []).forEach(function (rec) {
+    if (!rec) return;
+    const fac = facilityByFuzzyName(rec.outlet, state);
+    if (!fac) return;
+    if (!Array.isArray(fac.paymentHistory)) fac.paymentHistory = [];
+    const already = fac.paymentHistory.some(function (h) {
+      return h && ((rec.id && h.id === rec.id) ||
+        (String(h.date || '') === String(rec.date || '') && Number(h.amount) === Number(rec.amount)));
+    });
+    if (already) return;
+    const marker = 'pay-del:' + fac.id + ':' + (rec.date || '') + ':' + (Number(rec.amount) || 0);
+    if (delSet.has(marker) && deletionBeatsTs(state, marker, rec.updatedAt || rec.savedAt)) return;
+    if (delSet.has(rec.id) && deletionBeatsTs(state, rec.id, rec.updatedAt || rec.savedAt)) return;
+    const derived = periodLabelsFromMonthText(rec.month, rec.date);
+    fac.paymentHistory.push({
+      id: rec.id || ('pay-sch-' + (rec.date || '') + '-' + (rec.amount || 0)),
+      payerName: rec.depositor || rec.outlet,
+      amount: Number(rec.amount) || 0,
+      date: rec.date || currentUsageDateIso(),
+      month: rec.month || '',
+      periodFrom: derived ? derived.from : (rec.month || ''),
+      periodTo: derived ? derived.to : (rec.month || ''),
+      tariffAtPayment: Number(fac.amount) || 0,
+      vatAtPayment: Number(fac.vat) || 0
+    });
+    changed += 1;
+  });
+  (state.facilities || []).forEach(function (fac) {
+    if (!fac || !Array.isArray(fac.paymentHistory) || !fac.paymentHistory.length) return;
+    fac.paymentHistory.sort(function (a, b) { return String(b.date || '').localeCompare(String(a.date || '')); });
+    const latest = fac.paymentHistory[0] || null;
+    if (fac.lastPayment !== latest) { fac.lastPayment = latest; changed += 1; }
+  });
+  return changed;
 }
 
 function facilityByName(name) {
