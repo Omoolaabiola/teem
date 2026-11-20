@@ -130,6 +130,12 @@
           <span class="nav-badge nav-badge-alert" id="nav-tracker-badge" style="display:none;">0</span>
         </a>
 
+        <a class="nav-item" href="#evac-report" onclick="switchView('evac-report')">
+          <span class="nav-icon">&#128220;</span>
+          <span class="nav-text">Evacuation Report</span>
+          <span class="nav-badge nav-badge-live">Daily</span>
+        </a>
+
         <div class="nav-section-label">Management &amp; Formal Letters</div>
 
         <a class="nav-item" href="#requests" onclick="switchView('requests')">
@@ -561,6 +567,65 @@
             <table class="data-table">
               <thead><tr><th>DATE</th><th>TARGET</th><th>VEHICLE USED</th><th>SUPERVISOR</th><th>STATUS</th><th style="text-align:center;">ACTION</th></tr></thead>
               <tbody id="evacuation-logs-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== VIEW: EVACUATION REPORT ==================== -->
+      <section class="view-panel" id="view-evac-report">
+        <div class="view-header">
+          <div>
+            <h1 class="view-title">&#128220; EVACUATION REPORT</h1>
+          </div>
+          <div class="action-btn-group">
+            <button class="btn btn-outline" onclick="openPreviewForEvacReport()">&#128269; Preview</button>
+            <button class="btn btn-outline desktop-print-only" onclick="printEvacReport()">&#128424; Print</button>
+            <button class="btn btn-primary" onclick="exportEvacReport()">&#128190; Save</button>
+          </div>
+        </div>
+
+        <div class="data-card" style="padding:20px;">
+          <div class="card-header-bar" style="padding:0 0 16px 0;border:none;">
+            <div>
+              <span class="card-title">&#128197; EVACUATIONS ON A DAY</span>
+              <p style="font-size:12.5px;color:var(--text-muted);margin-top:2px;">Today, yesterday or any date you pick.</p>
+            </div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+              <button type="button" class="btn btn-outline" onclick="setEvacReportDate(0)">Today</button>
+              <button type="button" class="btn btn-outline" onclick="setEvacReportDate(-1)">Yesterday</button>
+              <input type="date" id="evr-date" class="form-input" style="width:160px;" onchange="renderEvacReport()">
+              <select id="evr-category" class="form-select" style="width:200px;" onchange="renderEvacReport()"></select>
+            </div>
+          </div>
+          <p id="evr-day-summary" style="font-size:12.5px;color:var(--text-muted);margin:0 0 10px 0;"></p>
+          <div class="data-table-container" style="border:1px solid var(--border-subtle);border-radius:12px;max-height:420px;overflow-y:auto;">
+            <table class="data-table">
+              <thead><tr><th>S/N</th><th>FACILITY / STREET</th><th>CATEGORY</th><th>VEHICLE USED</th><th>SUPERVISOR IN CHARGE</th><th>TRIPS</th><th>TONNAGE (T)</th><th>STATUS</th></tr></thead>
+              <tbody id="evr-day-body"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="data-card" style="padding:20px;">
+          <div class="card-header-bar" style="padding:0 0 16px 0;border:none;">
+            <div>
+              <span class="card-title">&#128269; EVACUATIONS BY FACILITY OR STREET</span>
+              <p style="font-size:12.5px;color:var(--text-muted);margin-top:2px;">Search a name to see every day it was evacuated this month or any other month.</p>
+            </div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;">
+              <div class="search-wrap">
+                <input type="text" id="evr-search" class="form-input" style="width:250px;" placeholder="Type a facility or street name..." oninput="renderEvacReport()">
+                <button type="button" class="search-clear" data-clear-for="evr-search" onclick="clearSearchField('evr-search')" title="Clear search" aria-label="Clear search">&#10005;</button>
+              </div>
+              <select id="evr-month" class="form-select" style="width:180px;" onchange="renderEvacReport()"></select>
+            </div>
+          </div>
+          <p id="evr-fac-summary" style="font-size:12.5px;color:var(--text-muted);margin:0 0 10px 0;"></p>
+          <div class="data-table-container" style="border:1px solid var(--border-subtle);border-radius:12px;max-height:420px;overflow-y:auto;">
+            <table class="data-table">
+              <thead><tr><th>S/N</th><th>DATE</th><th>FACILITY / STREET</th><th>CATEGORY</th><th>VEHICLE USED</th><th>SUPERVISOR IN CHARGE</th><th>TONNAGE (T)</th><th>STATUS</th></tr></thead>
+              <tbody id="evr-fac-body"></tbody>
             </table>
           </div>
         </div>

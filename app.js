@@ -4,7 +4,7 @@
 // 100% Online & Offline Hybrid Architecture with PDF Generation & Cloud Sync
 // ============================================================================
 
-const RELEASE = '8';
+const RELEASE = '9';
 const CURRENT_SYSTEM_DATE = (function () {
   const now = new Date();
   return now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0') + '-' + String(now.getDate()).padStart(2, '0');
@@ -4090,6 +4090,371 @@ function setAuditVisibility(mode) {
   renderComplianceAudit();
   const labels = { all: 'Showing both audit lists', evacuated: 'Showing only evacuated units', 'not-evacuated': 'Showing only units not evacuated' };
   showToast('\ud83d\udcca ' + labels[mode], 'info');
+}
+
+// ===========================================================================
+// 5b. EVACUATION REPORT - the day's work at a glance, and every day a single
+// facility or street was evacuated. Read-only: it reports what the tracker,
+// the directory and the monthly report already hold, so the three always
+// agree. Available to every signed-in user.
+// ===========================================================================
+function evrIsoToday(offsetDays) {
+  const d = new Date();
+  if (offsetDays) d.setDate(d.getDate() + offsetDays);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return y + '-' + m + '-' + dd;
+}
+
+function evrPrevMonthKey(key) {
+  const y = parseInt(String(key).slice(0, 4), 10);
+  const m = parseInt(String(key).slice(5, 7), 10);
+  if (!y || !m) return String(key);
+  if (m <= 1) return (y - 1) + '-12';
+  return y + '-' + String(m - 1).padStart(2, '0');
+}
+
+// Trips for an industrial trip come from the monthly report row itself.
+function evrIndustrialTrips(name, date) {
+  const rec = (store.state.monthlyReports || {})[monthLabelFromKey(date.slice(0, 7))];
+  if (!rec || !Array.isArray(rec.industrial)) return '';
+  const row = rec.industrial.find(function (r) {
+    return r && r.group !== 'partner' && String(r.date || '').slice(0, 10) === date &&
+      (r.company === name || (typeof namesReferToSameFacility === 'function' && namesReferToSameFacility(r.company, name)));
+  });
+  return row && row.trips ? String(row.trips) : '';
+}
+
+// Every evacuation the concession has recorded, from the facility and street
+// pages. Industrial pages are tallied from the monthly report, so this list
+// and the report always agree.
+function evrAllEvacuationRows() {
+  const rows = [];
+  (Array.isArray(store.state.facilities) ? store.state.facilities : []).forEach(function (f) {
+    if (!f) return;
+    (Array.isArray(f.evacuationHistory) ? f.evacuationHistory : []).forEach(function (h) {
+      if (!h) return;
+      const date = String(h.date || '').slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+      rows.push({
+        name: f.name,
+        category: f.category || 'Facility',
+        date: date,
+        truck: h.truck || (typeof defaultTruckName === 'function' ? defaultTruckName() : ''),
+        supervisor: h.supervisor || (f.category === 'Industrial' ? INDUSTRIAL_SUPERVISOR : (f.supervisor || '')),
+        trips: f.category === 'Industrial' ? evrIndustrialTrips(f.name, date) : '',
+        tonnage: h.tonnage || '',
+        status: h.status || 'Completed',
+        monthKey: date.slice(0, 7)
+      });
+    });
+  });
+  (Array.isArray(store.state.municipalStreets) ? store.state.municipalStreets : []).forEach(function (st) {
+    if (!st) return;
+    (Array.isArray(st.evacuationHistory) ? st.evacuationHistory : []).forEach(function (h) {
+      if (!h) return;
+      const date = String(h.date || '').slice(0, 10);
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+      rows.push({
+        name: st.name,
+        category: 'Municipal',
+        date: date,
+        truck: h.truck || (typeof defaultTruckName === 'function' ? defaultTruckName() : ''),
+        supervisor: h.supervisor || st.supervisor || '',
+        trips: '',
+        tonnage: h.tonnage || '',
+        status: h.status || 'Completed',
+        monthKey: date.slice(0, 7)
+      });
+    });
+  });
+  return rows;
+}
+
+function evrDayRows(dateIso, category) {
+  const cat = category || 'all';
+  return evrAllEvacuationRows().filter(function (r) {
+    return r.date === dateIso && (cat === 'all' || r.category === cat);
+  }).sort(function (a, b) {
+    return String(a.category).localeCompare(String(b.category)) || String(a.name).localeCompare(String(b.name));
+  });
+}
+
+function evrCategoryOptions() {
+  const cats = {};
+  (Array.isArray(store.state.facilities) ? store.state.facilities : []).forEach(function (f) {
+    if (f && f.category) cats[f.category] = true;
+  });
+  return ['Municipal'].concat(Object.keys(cats).sort());
+}
+
+// A typed name is matched the way the owner types it: a part of the name, or
+// the whole name with a slip or two in it. "Niger Biscuits Company Ldt" still
+// finds Niger Biscuits Company Ltd.
+function evrNameMatches(cn, cq) {
+  if (!cn || !cq) return false;
+  if (cn === cq || cn.indexOf(cq) !== -1) return true;
+  if (cq.length >= 6 && cn.length >= cq.length) {
+    const budget = cq.length >= 12 ? 3 : 2;
+    if (editDistance(cn.slice(0, cq.length), cq) <= budget) return true;
+  }
+  return false;
+}
+
+function evrFacilityMatches(query) {
+  const q = String(query || '').trim();
+  if (q.length < 2) return [];
+  const cq = cleanKeyPart(q);
+  if (!cq) return [];
+  const out = [];
+  (Array.isArray(store.state.facilities) ? store.state.facilities : []).forEach(function (f) {
+    if (!f || !f.name) return;
+    const cn = cleanKeyPart(f.name);
+    const exact = cn === cq || (typeof namesReferToSameFacility === 'function' && namesReferToSameFacility(f.name, q));
+    if (exact || evrNameMatches(cn, cq)) out.push({ name: f.name, category: f.category || 'Facility', exact: exact });
+  });
+  (Array.isArray(store.state.municipalStreets) ? store.state.municipalStreets : []).forEach(function (st) {
+    if (!st || !st.name) return;
+    const cn = cleanKeyPart(st.name);
+    if (cn === cq || evrNameMatches(cn, cq)) out.push({ name: st.name, category: 'Municipal', exact: cn === cq });
+  });
+  out.sort(function (a, b) { return (b.exact - a.exact) || String(a.name).localeCompare(String(b.name)); });
+  return out.slice(0, 12);
+}
+
+function evrFacilityRows(query, monthKey) {
+  const matches = evrFacilityMatches(query);
+  if (!matches.length) return { matches: matches, rows: [] };
+  const names = {};
+  matches.forEach(function (m) { names[m.name] = true; });
+  const rows = evrAllEvacuationRows().filter(function (r) {
+    return names[r.name] && (!monthKey || r.monthKey === monthKey);
+  }).sort(function (a, b) {
+    return String(b.date).localeCompare(String(a.date)) || String(a.name).localeCompare(String(b.name));
+  });
+  return { matches: matches, rows: rows };
+}
+
+function evrPopulateControls() {
+  const catSel = document.getElementById('evr-category');
+  if (catSel) {
+    const keep = catSel.value || 'all';
+    catSel.innerHTML = '<option value="all">All Categories</option>' +
+      evrCategoryOptions().map(function (c) {
+        return '<option value="' + escapeHtml(c) + '">' + escapeHtml(c) + '</option>';
+      }).join('');
+    let has = false;
+    Array.prototype.forEach.call(catSel.options, function (o) { if (o.value === keep) has = true; });
+    catSel.value = has ? keep : 'all';
+  }
+  const monthSel = document.getElementById('evr-month');
+  if (monthSel) {
+    const keep = monthSel.value;
+    const nowKey = evrIsoToday(0).slice(0, 7);
+    const keys = {};
+    keys[nowKey] = true;
+    keys[evrPrevMonthKey(nowKey)] = true;
+    evrAllEvacuationRows().forEach(function (r) { keys[r.monthKey] = true; });
+    const list = Object.keys(keys).sort(function (a, b) { return b.localeCompare(a); }).slice(0, 12);
+    monthSel.innerHTML = list.map(function (k) {
+      return '<option value="' + escapeHtml(k) + '">' + escapeHtml(monthLabelFromKey(k) || k) + '</option>';
+    }).join('');
+    monthSel.value = (keep && list.indexOf(keep) !== -1) ? keep : nowKey;
+  }
+}
+
+function evrStatusBadge(status) {
+  return /complete/i.test(String(status || '')) ? 'badge-success' : 'badge-warning';
+}
+
+function renderEvacReportDay() {
+  const body = document.getElementById('evr-day-body');
+  if (!body) return;
+  const sumEl = document.getElementById('evr-day-summary');
+  const dateEl = document.getElementById('evr-date');
+  const catEl = document.getElementById('evr-category');
+  const date = (dateEl && /^\d{4}-\d{2}-\d{2}$/.test(dateEl.value || '')) ? dateEl.value : evrIsoToday(0);
+  const category = catEl ? catEl.value : 'all';
+  const rows = evrDayRows(date, category);
+  if (sumEl) {
+    const counts = {};
+    rows.forEach(function (r) { counts[r.category] = (counts[r.category] || 0) + 1; });
+    const breakdown = Object.keys(counts).sort().map(function (k) { return k + ' ' + counts[k]; }).join(' \u00b7 ');
+    sumEl.innerHTML = '<strong>' + rows.length + '</strong> evacuation' + (rows.length === 1 ? '' : 's') + ' recorded on <strong>' + escapeHtml(formatLongDate(date) || date) + '</strong>' + (breakdown ? ' \u2014 ' + escapeHtml(breakdown) : '');
+  }
+  body.innerHTML = rows.length
+    ? rows.map(function (r, i) {
+        return '<tr>' +
+          '<td>' + (i + 1) + '</td>' +
+          '<td><strong>' + escapeHtml(r.name) + '</strong></td>' +
+          '<td>' + escapeHtml(r.category) + '</td>' +
+          '<td>' + escapeHtml(r.truck) + '</td>' +
+          '<td>' + escapeHtml(r.supervisor) + '</td>' +
+          '<td style="text-align:center;">' + (r.trips ? escapeHtml(String(r.trips)) : '\u2014') + '</td>' +
+          '<td style="text-align:center;">' + (r.tonnage ? escapeHtml(String(r.tonnage)) : '\u2014') + '</td>' +
+          '<td><span class="badge ' + evrStatusBadge(r.status) + '">' + escapeHtml(r.status) + '</span></td>' +
+        '</tr>';
+      }).join('')
+    : '<tr><td colspan="8" style="text-align:center;padding:34px;color:var(--text-muted);">No evacuation was recorded on this date.</td></tr>';
+}
+
+function renderEvacReportFacility() {
+  const body = document.getElementById('evr-fac-body');
+  if (!body) return;
+  const sumEl = document.getElementById('evr-fac-summary');
+  const searchEl = document.getElementById('evr-search');
+  const monthEl = document.getElementById('evr-month');
+  const query = searchEl ? String(searchEl.value || '').trim() : '';
+  const monthKey = monthEl ? monthEl.value : evrIsoToday(0).slice(0, 7);
+  const monthLabel = monthLabelFromKey(monthKey) || monthKey;
+  const data = evrFacilityRows(query, monthKey);
+  if (sumEl) {
+    if (query.length < 2) {
+      sumEl.innerHTML = 'Type at least the first two letters of a facility or street name.';
+    } else if (!data.matches.length) {
+      sumEl.innerHTML = 'No facility or street matches \u201c' + escapeHtml(query) + '\u201d.';
+    } else if (data.matches.length === 1) {
+      sumEl.innerHTML = '<strong>' + escapeHtml(data.matches[0].name) + '</strong> (' + escapeHtml(data.matches[0].category) + ') \u2014 <strong>' + data.rows.length + '</strong> evacuation' + (data.rows.length === 1 ? '' : 's') + ' in ' + escapeHtml(monthLabel) + '.';
+    } else {
+      sumEl.innerHTML = data.matches.length + ' matching names \u2014 <strong>' + data.rows.length + '</strong> evacuations in ' + escapeHtml(monthLabel) + '.';
+    }
+  }
+  body.innerHTML = data.rows.length
+    ? data.rows.map(function (r, i) {
+        return '<tr>' +
+          '<td>' + (i + 1) + '</td>' +
+          '<td><strong>' + escapeHtml(formatDate(r.date) || r.date) + '</strong></td>' +
+          '<td>' + escapeHtml(r.name) + '</td>' +
+          '<td>' + escapeHtml(r.category) + '</td>' +
+          '<td>' + escapeHtml(r.truck) + '</td>' +
+          '<td>' + escapeHtml(r.supervisor) + '</td>' +
+          '<td style="text-align:center;">' + (r.tonnage ? escapeHtml(String(r.tonnage)) : '\u2014') + '</td>' +
+          '<td><span class="badge ' + evrStatusBadge(r.status) + '">' + escapeHtml(r.status) + '</span></td>' +
+        '</tr>';
+      }).join('')
+    : '<tr><td colspan="8" style="text-align:center;padding:34px;color:var(--text-muted);">' + (query.length < 2 ? 'Search a facility or street to see its evacuation dates.' : 'No evacuation recorded for this search in ' + escapeHtml(monthLabel) + '.') + '</td></tr>';
+}
+
+function renderEvacReport() {
+  const dateEl = document.getElementById('evr-date');
+  if (!dateEl) return;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateEl.value || '')) dateEl.value = evrIsoToday(0);
+  evrPopulateControls();
+  refreshSearchClear('evr-search');
+  renderEvacReportDay();
+  renderEvacReportFacility();
+}
+
+function setEvacReportDate(offsetDays) {
+  const dateEl = document.getElementById('evr-date');
+  if (!dateEl) return;
+  dateEl.value = evrIsoToday(offsetDays || 0);
+  renderEvacReport();
+}
+
+function evacReportSpec() {
+  const dateEl = document.getElementById('evr-date');
+  const catEl = document.getElementById('evr-category');
+  const searchEl = document.getElementById('evr-search');
+  const monthEl = document.getElementById('evr-month');
+  const date = (dateEl && /^\d{4}-\d{2}-\d{2}$/.test(dateEl.value || '')) ? dateEl.value : evrIsoToday(0);
+  const category = catEl ? catEl.value : 'all';
+  const query = searchEl ? String(searchEl.value || '').trim() : '';
+  const monthKey = monthEl ? monthEl.value : evrIsoToday(0).slice(0, 7);
+  const facData = evrFacilityRows(query, monthKey);
+  return {
+    kind: 'evac_report',
+    reference: pdfRef('EVR'),
+    date: date,
+    dateLabel: formatLongDate(date) || date,
+    categoryLabel: category === 'all' ? 'All Categories' : category,
+    dayRows: evrDayRows(date, category),
+    searchQuery: query,
+    monthLabel: monthLabelFromKey(monthKey) || monthKey,
+    facRows: facData.rows,
+    facMatchCount: facData.matches.length
+  };
+}
+
+function buildEvacReportPdf(spec, options) {
+  options = options || {};
+  const doc = new PdfDoc({ reference: spec.reference, heading: 'EVACUATION REPORT', subheading: spec.dateLabel, layout: options.layout, fontScale: options.fontScale });
+
+  doc.text('DAILY EVACUATION REPORT', { style: 'bold', size: 14, align: 'center' });
+  doc.text('Date: ' + spec.dateLabel + '    Category: ' + spec.categoryLabel, { style: 'italic', size: 11, align: 'center' });
+  doc.gap(5);
+
+  doc.text('A. EVACUATIONS RECORDED ON ' + String(spec.dateLabel).toUpperCase() + ' (' + spec.dayRows.length + ')', { style: 'bold', size: 11.5 });
+  doc.gap(1);
+  doc.table(
+    [
+      { label: 'S/N', width: 10, align: 'center' },
+      { label: 'FACILITY / STREET', width: 46 },
+      { label: 'CATEGORY', width: 20 },
+      { label: 'VEHICLE USED', width: 32 },
+      { label: 'SUPERVISOR', width: 26 },
+      { label: 'TRIPS / TONNAGE', width: 18, align: 'center' },
+      { label: 'STATUS', width: 22 }
+    ],
+    spec.dayRows.length
+      ? spec.dayRows.map(function (r, i) {
+          return [(i + 1) + '.', r.name, r.category, r.truck, r.supervisor, r.trips || (r.tonnage ? r.tonnage + ' t' : '\u2014'), r.status];
+        })
+      : [['\u2014', 'No evacuation was recorded on this date.', '', '', '', '', '']],
+    { fontSize: 10 }
+  );
+  doc.gap(4);
+
+  if (spec.searchQuery && spec.searchQuery.length >= 2) {
+    doc.text('B. EVACUATION HISTORY FOR \u201c' + spec.searchQuery + '\u201d IN ' + String(spec.monthLabel).toUpperCase() + ' (' + spec.facRows.length + ')', { style: 'bold', size: 11.5 });
+    doc.gap(1);
+    doc.table(
+      [
+        { label: 'S/N', width: 10, align: 'center' },
+        { label: 'DATE', width: 24, align: 'center' },
+        { label: 'FACILITY / STREET', width: 42 },
+        { label: 'VEHICLE USED', width: 32 },
+        { label: 'SUPERVISOR', width: 26 },
+        { label: 'TONNAGE', width: 14, align: 'center' },
+        { label: 'STATUS', width: 26 }
+      ],
+      spec.facRows.length
+        ? spec.facRows.map(function (r, i) {
+            return [(i + 1) + '.', formatDate(r.date) || r.date, r.name, r.truck, r.supervisor, r.tonnage || '\u2014', r.status];
+          })
+        : [['\u2014', 'No evacuation recorded for this search in ' + spec.monthLabel + '.', '', '', '', '', '']],
+      { fontSize: 10 }
+    );
+    doc.gap(4);
+  }
+
+  doc.keep(26);
+  doc.gap(2);
+  doc.rule({ color: 180 });
+  doc.gap(3);
+  doc.text('Certified Date: ' + formatDate(currentUsageDateIso()) + '    Reference: ' + spec.reference, { size: 9.8 });
+  doc.gap(1.5);
+  doc.text('Certified by: Mojisola R. Ajibade', { style: 'bold', size: 11 });
+  doc.text('Managing Director', { style: 'italic', size: 10 });
+
+  const filename = 'TEEM_Evacuation_Report_' + spec.date + '_' + spec.reference + '.pdf';
+  const finalDoc = doc.finalize({ title: 'Evacuation Report - ' + spec.dateLabel });
+  if (!options.defer) finalDoc.save(filename);
+  return { pages: doc.pages, filename: filename, doc: finalDoc, closingPushed: !!doc.closingPushed, signaturePage: doc.signaturePage, lastPageFill: doc.lastPageFill || 0 };
+}
+
+function exportEvacReport() {
+  const spec = evacReportSpec();
+  archiveAndRender(spec, buildEvacReportPdf, 'Evacuation Report', spec.dayRows.length);
+}
+
+function printEvacReport() {
+  openDocPreview('evac_report', { collapseSettings: true });
+}
+
+function openPreviewForEvacReport() {
+  openDocPreview('evac_report', { collapseSettings: true });
 }
 
 function renderComplianceAudit() {
@@ -10613,6 +10978,7 @@ function renderCurrentView() {
     case 'facilities': renderFacilitiesDirectory(); break;
     case 'municipal': renderMunicipalDirectory(); break;
     case 'evacuations': renderEvacuations(); break;
+    case 'evac-report': renderEvacReport(); break;
     case 'requests': renderRequestsView(); break;
     case 'account-statement': renderAccountStatementView(); break;
     case 'debtors': renderDebtorRadar(); break;
@@ -10672,6 +11038,7 @@ function currentDocSpecBuilder() {
     facility: buildFacilityReportPdf,
     street: buildStreetReportPdf,
     audit: buildAuditPdf,
+    evac_report: buildEvacReportPdf,
     debtors: buildDebtorReportPdf,
     monthly: buildMonthlyReportPdf
   };
@@ -10687,6 +11054,7 @@ function currentDocSpecBuilder() {
     facility: { spec: facilityReportSpec, builder: buildFacilityReportPdf, title: 'Facility Service Report' },
     street: { spec: streetReportSpec, builder: buildStreetReportPdf, title: 'Municipal Street Report' },
     audit: { spec: auditSpec, builder: buildAuditPdf, title: 'Evacuation Compliance Audit' },
+    evac_report: { spec: evacReportSpec, builder: buildEvacReportPdf, title: 'Evacuation Report' },
     debtors: { spec: debtorReportSpec, builder: buildDebtorReportPdf, title: 'OUTSTANDING FACILITIES' },
     monthly: { spec: monthlyReportSpec, builder: buildMonthlyReportPdf, title: (activeMonthlyReportPeriod || CURRENT_MONTH_NAME).toUpperCase() + ' INCOME AND EXPENDITURE ANALYSIS' }
   };
