@@ -1,0 +1,86 @@
+name: TEEM browser and iPhone update
+on:
+  workflow_dispatch:
+  release:
+    types: [published]
+permissions: {}
+concurrency:
+  group: teem-web-pages
+  cancel-in-progress: false
+jobs:
+  build:
+    if: github.event_name == 'workflow_dispatch' || (!github.event.release.prerelease && !github.event.release.draft)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - name: Read compatible assets from Latest (never publish a release)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -eu
+          latest=$(gh api "repos/$GITHUB_REPOSITORY/releases/latest" --jq .tag_name)
+          if [ -n "$EVENT_TAG" ] && [ "$latest" != "$EVENT_TAG" ]; then echo 'Not the Latest release; no deployment'; exit 1; fi
+          mkdir _release
+          gh release download "$latest" --repo "$GITHUB_REPOSITORY" --pattern 'update.json' --pattern 'TEEM-Windows-v*.zip' --dir _release
+      - name: Build static web portal
+        shell: python
+        run: |
+          # Build a static Pages artifact only. Never execute release payloads, contact the database, or write to the source branch.
+          import base64, hashlib, json, re, shutil, zipfile
+          from pathlib import Path as P
+          h=lambda b:hashlib.sha256(b).hexdigest()
+          def require(ok,why):
+           if not ok: raise SystemExit(why)
+          root=P('.'); dest=P('_site'); dest.mkdir(exist_ok=False)
+          compat={'version.json': {'old': 'c849aae30d6ba4ef486b0417de6b73055feaca86e1f4b23b2e02a528b81eeaac', 'new': '4d0b187e789c401cd86dcf6114b55d322b27188f242a1b03ea45b2df08ebbda0', 'ops': [[2, 106, 'ICAic2VyaWVzIjogInRlZW0tZG90dGVkLXYxIiwKICAicmVsZWFzZSI6ICIxLjAuMSIsCiAgInZlcnNpb24iOiAiMS4wLjEiLAogICJhcHAiOiAiVEVFTV92MS4wLjFfQXBwLmh0bWwiLAogICJidWlsdCI6ICIyMDI2LTEwLTA4Igo=']]}, 'sw.js': {'old': 'ca87d49848a5cd10e58f541748f571b65c18ff0875f2137f8f94671c7851eba0', 'new': '098299c27ca3c4669ce5225429cc1136827d58b6118fd9ca497f383ecbb50a66', 'ops': [[0, 91, 'Ly8gVEVFTSBTZXJ2aWNlIFdvcmtlciAtIE9mZmxpbmUgUFdBIFN1cHBvcnQgdjEuMC4xCmNvbnN0IENBQ0hFX05BTUUgPSAndGVlbS1jb25jZXNzaW9uLXYxLjAuMSc7Cg==']]}, 'manifest.json': {'old': '8f66e5fc0afd474e9bf056bb66094a6e28f78ca2b105da0cb21fbb56e793c398', 'new': '743592df1d3dc1539bbee1ddcb4a545fcc15c9864d651316ad4492aae062eb80', 'ops': [[2, 46, 'ICAibmFtZSI6ICJURUVNIFdhc3RlIE1hbmFnZW1lbnQgU3lzdGVtIHYxLjAuMSIsCg=='], [79, 114, 'ICAiZGVzY3JpcHRpb24iOiAiUFNQIENvbmNlc3Npb24gT3BlcmF0aW9ucywgR1BTIEZpZWxkIE1hcCwgRXZhY3VhdGlvbiBEaXNwYXRjaCBhbmQgRG9jdW1lbnQgQXJjaGl2ZSBQb3J0YWwgdjEuMC4xIiwK'], [366, 23, 'ICAidmVyc2lvbiI6ICIxLjAuMSIsCg==']]}, 'style.css': {'old': '719fc2399e44e8c46b84b6215ea83ae56359160e09d1e994377f7646dc2f6598', 'new': '719fc2399e44e8c46b84b6215ea83ae56359160e09d1e994377f7646dc2f6598', 'ops': []}, 'index.html': {'old': '2a600af41f7269865838e1fb5e8294dbca56d6e9287922eed2b064eb4b6cc51c', 'new': 'd738193b9a717d3257c20557aa128f3bf7b240874d598e3ca1bfd2f9f69f0e30', 'ops': [[3526, 92, 'ICAgICAgICAgIFdBU1RFIENPTkNFU1NJT04gUE9SVEFMIDxzdWIgY2xhc3M9ImFwcC12ZXJzaW9uIiBpZD0iYXBwLXZlcnNpb24tbGFiZWwiPnYxLjAuMTwvc3ViPgo='], [68896, 0, 'ICAgICAgICA8YnV0dG9uIGlkPSJkZXNrdG9wLXVwZGF0ZS1idXR0b24iIGhpZGRlbiB0eXBlPSJidXR0b24iIG9uY2xpY2s9IndpbmRvdy5URUVNX0RFU0tUT1BfUlVOVElNRS5jaGVja0ZvclVwZGF0ZXMoKSI+Q2hlY2sgZm9yIHVwZGF0ZXM8L2J1dHRvbj4K'], [95078, 53, 'ICAgICAgICAgIDxzcGFuIGNsYXNzPSJhdXRoLXZlcnNpb24tcGlsbCI+djEuMC4xPC9zcGFuPgo='], [101464, 55, 'ICAgICAgICAgICAgPHNwYW4gY2xhc3M9ImF1dGgtdmVyc2lvbi1waWxsIj52MS4wLjE8L3NwYW4+Cg=='], [104283, 55, 'ICAgICAgICAgICAgPHNwYW4gY2xhc3M9ImF1dGgtdmVyc2lvbi1waWxsIj52MS4wLjE8L3NwYW4+Cg=='], [177756, 0, 'ICA8c2NyaXB0PmlmKHdpbmRvdy5URUVNX0RFU0tUT1BfUlVOVElNRT8uY2hlY2tGb3JVcGRhdGVzKSBkb2N1bWVudC5nZXRFbGVtZW50QnlJZCgiZGVza3RvcC11cGRhdGUtYnV0dG9uIikuaGlkZGVuPWZhbHNlOzwvc2NyaXB0Pgo=']]}, 'app.js': {'old': 'c60cdfdc94bb084f5907f3e7ce04890c7ff9be09df85f371849099d75a186485', 'new': '9b63dd01e899b3d5c44d08fef43df1cc7fd862c2130c8db5b021e6fd9473d6ca', 'ops': [[362, 22, 'Y29uc3QgUkVMRUFTRSA9ICcxLjAuMSc7Cg==']]}}
+          buffers={}
+          for name,c in compat.items():
+           src=P(name).read_bytes(); require(h(src)==c['old'], 'Unexpected Pages source: '+name+'; existing site left unchanged')
+           pos=0; parts=[]
+           for i,n,ins in c['ops']:parts.extend([src[pos:i],base64.b64decode(ins)]);pos=i+n
+           result=b''.join(parts)+src[pos:]; require(h(result)==c['new'],'Baseline mismatch');buffers[name]=result
+          meta=json.loads(P('_release/update.json').read_bytes()); ver=meta['version']; require(isinstance(ver,str) and re.fullmatch(r'[1-9]\d{0,3}\.\d\.\d',ver) and tuple(map(int,ver.split('.')))>(1,0,1),'Unsupported version')
+          name='TEEM-Windows-v'+ver+'.zip';require(meta['channel']=='teem-win64-portal-1' and meta['base']=='1.0.1' and meta['file']==name,'Incompatible native-only or legacy release');f=P('_release')/name; require(0<f.stat().st_size==meta['size']<=8*1024**2 and h(f.read_bytes())==meta['sha256'],'Release integrity mismatch');
+          with zipfile.ZipFile(f) as z:
+           require(z.namelist()==['patch.json'] and z.infolist()[0].file_size<=8*1024**2,'Invalid patch archive');patch=json.loads(z.read('patch.json'))
+          require(all(patch[k]==meta[k] for k in ['channel','version','base']),'Wrong patch'); seen=set()
+          for change in patch['files']:
+           n=change['name'];require(n in buffers and n not in seen,'Unapproved patch entry');seen.add(n);old=buffers[n]; require(h(old)==change['from'],'Wrong patch baseline');pieces=[];pos=0
+           for i,drop,ins in change['ops']:
+            require(type(i)==type(drop)==int and pos<=i<=i+drop<=len(old),'Invalid patch range');pieces.extend([old[pos:i],base64.b64decode(ins,validate=True)]);pos=i+drop
+           new=b''.join(pieces)+old[pos:];require(h(new)==change['to'],'Patch output mismatch');buffers[n]=new
+          require(json.loads(buffers['version.json'])['version']==ver,'Wrong portal version');
+          for n,b in buffers.items():(dest/n).write_bytes(b)
+          # Stop the legacy app from deleting every other cache on this GitHub Pages origin.
+          p=dest/'app.js'; text=p.read_text(); start=text.index("    if (typeof window !== 'undefined' && 'caches'",text.index('function enforceCurrentVersionStamp'));end=text.index('\n  } catch (e) {}',start);p.write_text(text[:start]+'    // Web cache lifecycle is managed by the scoped Pages service worker.'+text[end:]);
+          assets=['assets/teem_signature.png', 'assets/teem_logo_standalone.png', 'assets/teem_logo_master.png', 'assets/teem_logo_light.png', 'assets/teem.ico', 'assets/slide_recycling.jpg', 'assets/slide_community.jpg', 'assets/slide_collection.jpg', 'assets/jspdf.umd.min.js', 'assets/icon-512.png', 'assets/icon-192.png', 'assets/embedded_images.js', 'cloud/config.js']
+          for n in assets:
+           p=dest/n;p.parent.mkdir(exist_ok=True,parents=True);shutil.copyfile(n,p)
+          # Retain the manifest start URL and the exact same origin, scope and data keys.
+          entry=dest/'index.html';text=entry.read_text();needle='<button id="desktop-update-button"';require(text.count(needle)==1,'Update UI anchor missing');text=text.replace(needle,'<button type="button" id="teem-web-check" class="btn btn-outline">Check for updates</button>\n        '+needle);text=text.replace('</body>','<script src="web-updates.js"></script>\n</body>');(dest/'web-updates.js').write_text("(() => {\n const btn=document.getElementById('teem-web-check');let reg,checking=false,bar,last=0;\n function dismiss(){bar?.remove();bar=null;}\n function note(msg,buttons){dismiss();bar=document.createElement('aside');bar.setAttribute('role','status');bar.style.cssText='position:fixed;bottom:max(1rem,env(safe-area-inset-bottom));left:50%;transform:translateX(-50%);z-index:2147483647;background:#fff;color:#18382c;box-shadow:0 3px 18px #0005;padding:14px;border-radius:10px;width:min(92vw,400px);font:16px system-ui;';const text=document.createElement('p');text.style.margin='0 0 10px';text.textContent=msg;bar.append(text);for(const [label,fn] of buttons){const b=document.createElement('button');b.textContent=label;b.style.cssText='padding:7px 12px;margin-right:8px;';b.onclick=fn;bar.append(b);}document.body.append(bar);}\n function offer(){const w=reg?.waiting;if(!w || !navigator.serviceWorker.controller)return;note('A TEEM update is ready. Save any open form before reloading.',[['Update now',()=>{dismiss();let done=false;const reload=()=>{if(!done){done=true;location.reload();}};navigator.serviceWorker.addEventListener('controllerchange',reload,{once:true});w.addEventListener('statechange',()=>{if(w.state==='activated')reload();});w.postMessage('TEEM_APPLY');}],['Later',dismiss]]);}\n function watch(manual){const w=reg?.installing;if(!w)return;w.addEventListener('statechange',()=>{if(w.state==='installed')setTimeout(offer,0);if(w.state==='redundant'&&manual)note('Update not ready. Your current version is still available.',[['OK',dismiss]]);});}\n async function check(manual){if(!reg||checking)return;checking=true;last=Date.now();try{if(reg.waiting){offer();return;}await reg.update();if(reg.waiting)offer();else if(reg.installing)watch(manual);else if(manual)note('You are on the current web build.',[['OK',dismiss]]);}catch{if(manual)note('Could not check right now. Try again when online.',[['OK',dismiss]]);}finally{checking=false;}}\n btn.onclick=()=>reg?check(true):note('Web updates need an online HTTPS session with service workers enabled. Reopen the site when online.',[['OK',dismiss]]);\n if(!('serviceWorker' in navigator))return;\n navigator.serviceWorker.register('./sw.js',{scope:'./',updateViaCache:'none'}).then(r=>{reg=r;r.addEventListener('updatefound',()=>watch(false));watch(false);check(false);document.addEventListener('visibilitychange',()=>{if(!document.hidden&&Date.now()-last>60000)check(false);});window.addEventListener('online',()=>check(false));}).catch(()=>{});\n})();\n")
+          # Cache-bust static references across tabs. Version.json always reports the deployment, not a cached one.
+          text=re.sub(r'((?:href|src)=")(assets/[^"?#]+|cloud/config\.js|app\.js|style\.css|manifest\.json|web-updates\.js)(")',lambda m:m[1]+m[2]+'?tw='+ver+m[3],text);entry.write_text(text)
+          vpath=dest/'version.json';vm=json.loads(vpath.read_text());vm.update(app='index.html',platform='web',webUpdates=1);vpath.write_text(json.dumps(vm,indent=2)+'\n')
+          files={p.relative_to(dest).as_posix():h(p.read_bytes()) for p in dest.rglob('*') if p.is_file() and p.name not in ['sw.js','version.json']}
+          (dest/'sw.js').write_text('const VERSION='+json.dumps(ver)+', BUILD='+json.dumps(h(json.dumps(files,sort_keys=True).encode())[:16])+', FILES='+json.dumps(files)+';\n'+"const ROOT=new URL(self.registration.scope),PREFIX='teem-web:'+ROOT.pathname+':',CACHE=PREFIX+VERSION+':'+BUILD;\nself.addEventListener('install',e=>e.waitUntil((async()=>{\n const cache=await caches.open(CACHE);await Promise.all(Object.entries(FILES).map(async([name,digest])=>{const url=new URL(name,ROOT);const request=new URL(url);request.searchParams.set('tw',VERSION);const res=await fetch(request,{cache:'reload'});if(!res.ok)throw Error('Incomplete deployment');const bytes=await res.clone().arrayBuffer();const check=Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),n=>n.toString(16).padStart(2,'0')).join('');if(check!==digest)throw Error('Web build mismatch');await cache.put(url,res);}));\n // Do not skipWaiting on upgrades: Later keeps the current open app usable.\n})()));\nself.addEventListener('message',e=>{if(e.data==='TEEM_APPLY')e.waitUntil(self.skipWaiting());});\nself.addEventListener('activate',e=>e.waitUntil((async()=>{await self.clients.claim();const names=(await caches.keys()).filter(k=>k.startsWith(PREFIX)&&k!==CACHE);await Promise.all(names.slice(0,-1).map(k=>caches.delete(k)));})()));\nself.addEventListener('fetch',e=>{if(e.request.method!=='GET')return;const u=new URL(e.request.url);if(u.origin!==ROOT.origin||!u.pathname.startsWith(ROOT.pathname))return;let n=u.pathname.slice(ROOT.pathname.length);if(!n)n='index.html';if(!Object.prototype.hasOwnProperty.call(FILES,n))return;e.respondWith((async()=>{const explicit=u.searchParams.get('tw');let key=CACHE;if(explicit&&explicit!==VERSION){const keys=await caches.keys();key=keys.reverse().find(k=>k.startsWith(PREFIX+explicit+':'));if(!key)return fetch(e.request);}const v=await (await caches.open(key)).match(new URL(n,ROOT));return v||fetch(e.request);})());});\n");(dest/'.nojekyll').touch();print('Built Pages portal v'+ver)
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
